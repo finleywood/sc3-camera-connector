@@ -15,14 +15,13 @@ void CameraManager::CloseDevice()
     if(this->current_device == nullptr)
         return;
     
-    k4a_device_stop_cameras(*this->current_device.get());
-    k4a_device_close(*this->current_device.get());
-    this->current_device.reset();
+    k4a_device_stop_cameras(this->current_device);
+    k4a_device_close(this->current_device);
 
     CurrentStatus = camera_manager_status_t::CLOSED;
 }
 
-cv::Mat* CameraManager::K4ARGBToCV(k4a_image_t* img)
+cv::Mat CameraManager::K4ARGBToCV(k4a_image_t* img)
 {
     int width  = k4a_image_get_width_pixels(*img);
     int height = k4a_image_get_height_pixels(*img);
@@ -33,24 +32,24 @@ cv::Mat* CameraManager::K4ARGBToCV(k4a_image_t* img)
     //Convert to BGR (remove alpha channel)
     cv::Mat bgr_mat;
     cv::cvtColor(bgra_mat, bgr_mat, cv::COLOR_BGRA2BGR);
-    return &bgr_mat;
+    return bgr_mat;
 }
 
-QRDetection* CameraManager::LookForQR(k4a_image_t* img) 
+QRDetection CameraManager::LookForQR(k4a_image_t* img) 
 {
-    cv::Mat* cv_mat_img = this->K4ARGBToCV(img);
+    cv::Mat cv_mat_img = this->K4ARGBToCV(img);
 
     cv::QRCodeDetector cv_qr;
     std::vector<cv::Point> qr_detections;
-    std::string found_data = cv_qr.detectAndDecode(*cv_mat_img, qr_detections);
+    std::string found_data = cv_qr.detectAndDecode(cv_mat_img, qr_detections);
 
     if(!found_data.empty()) {
         auto detection_st = QRDetection{
             found_data
         };
-        return &detection_st;
+        return detection_st;
     } else {
-        return nullptr;
+        return {};
     }
 }
 
@@ -64,14 +63,24 @@ void CameraManager::HandleCapture(k4a_capture_t* cap) {
         depth_image = k4a_capture_get_depth_image(*cap);
 
     // Look for and decode QR codes
-    QRDetection* found_qr = this->LookForQR(&color_image);
-    if(found_qr != nullptr) {
-        found_qr->rgb_image_buf = k4a_image_get_buffer(color_image);
-        if(this->enable_depth) {
-            found_qr->depth_image_buf = k4a_image_get_buffer(depth_image);
+    if(color_image != nullptr) {
+        QRDetection found_qr = this->LookForQR(&color_image);
+        if(!found_qr.identifier.empty() && found_qr.identifier != this->prev_detection.identifier) {
+            found_qr.rgb_image_buf = k4a_image_get_buffer(color_image);
+            if(this->enable_depth) {
+                found_qr.depth_image_buf = k4a_image_get_buffer(depth_image);
+            }
+            this->prev_detection = found_qr;
+            this->detection_callback(found_qr);
         }
-        this->detection_callback(found_qr);
+    } else {
+        LOG(INFO) << "Could not get color image" << std::endl;
     }
+
+    if(color_image != nullptr)
+        k4a_image_release(color_image);
+    if(depth_image != nullptr)
+        k4a_image_release(depth_image);
 }
 
 bool CameraManager::StartPipeline()
@@ -89,7 +98,7 @@ bool CameraManager::StartPipeline()
         return false;
     }
 
-    if (K4A_FAILED(k4a_device_open(this->camera_idx, this->current_device.get()))) {
+    if (K4A_FAILED(k4a_device_open(this->camera_idx, &this->current_device))) {
         LOG(ERROR) << "Failed to open device" << std::endl;
         return false;
     }
@@ -100,9 +109,9 @@ bool CameraManager::StartPipeline()
     d_conf.color_format = K4A_IMAGE_FORMAT_COLOR_BGRA32;
     d_conf.color_resolution = K4A_COLOR_RESOLUTION_2160P;
     d_conf.depth_mode = this->enable_depth ? K4A_DEPTH_MODE_NFOV_UNBINNED : K4A_DEPTH_MODE_OFF;
-    d_conf.camera_fps = K4A_FRAMES_PER_SECOND_30;
+    d_conf.camera_fps = K4A_FRAMES_PER_SECOND_5;
 
-    if(K4A_FAILED(k4a_device_start_cameras(*this->current_device.get(), &d_conf))) {
+    if(K4A_FAILED(k4a_device_start_cameras(this->current_device, &d_conf))) {
         LOG(ERROR) << "Failed to start camera " << this->camera_idx << std::endl;
         this->CloseDevice();
         return false;
@@ -112,12 +121,14 @@ bool CameraManager::StartPipeline()
 
     k4a_capture_t current_capture = nullptr;
     while(!CloseFlag) {
-        k4a_wait_result_t wait_res = k4a_device_get_capture(*this->current_device.get(), &current_capture, 1000);
+        k4a_wait_result_t wait_res = k4a_device_get_capture(this->current_device, &current_capture, 1000);
         if(wait_res == K4A_WAIT_RESULT_SUCCEEDED) {
             this->HandleCapture(&current_capture);
         } else {
             LOG(DEBUG) << "Capture get timed out." << std::endl;
         }
+        if(current_capture != nullptr)
+            k4a_capture_release(current_capture);
     }
 
     k4a_capture_release(current_capture);

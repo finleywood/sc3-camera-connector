@@ -5,7 +5,7 @@
 
 #include "QRDetection.h"
 
-typedef std::function<void(QRDetection*)> det_callback_t;
+typedef std::function<void(QRDetection)> det_callback_t;
 
 typedef enum {
     UNINIT,
@@ -31,12 +31,13 @@ private:
     bool enable_depth = false;
     det_callback_t detection_callback;
     uint8_t camera_idx;
-    std::unique_ptr<k4a_device_t> current_device = std::unique_ptr<k4a_device_t>();
+    k4a_device_t current_device = nullptr;
     uint8_t retry_max;
     uint8_t current_retry = 0;
+    QRDetection prev_detection;
     bool StartPipeline();
     void CloseDevice();
     void HandleCapture(k4a_capture_t*);
-    QRDetection* LookForQR(k4a_image_t*);
-    cv::Mat* K4ARGBToCV(k4a_image_t*);
+    QRDetection LookForQR(k4a_image_t*);
+    cv::Mat K4ARGBToCV(k4a_image_t*);
 };

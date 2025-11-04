@@ -1,11 +1,10 @@
 #include <stdio.h>
 #include <aixlog/aixlog.hpp>
 #include "CameraManager.h"
-#include "QRDetection.h"
 
-void detection_callback(QRDetection*)
+void detection_callback(QRDetection detection)
 {
-
+    LOG(INFO) << "QR DETECTION - " << "Found ID: " << detection.identifier.c_str() << std::endl;
 }
 
 int main()
