@@ -1,3 +1,5 @@
+#pragma once
+
 #include <aixlog/aixlog.hpp>
 #include <k4a/k4a.h>
 #include <opencv2/opencv.hpp>

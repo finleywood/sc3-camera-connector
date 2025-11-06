@@ -2,5 +2,8 @@ set(SOURCES
     ${SOURCES}        
     ${CMAKE_CURRENT_SOURCE_DIR}/main.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/CameraManager.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/UploadQueue.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/UpstreamTransport.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/HttpTransport.cpp
     PARENT_SCOPE
 )

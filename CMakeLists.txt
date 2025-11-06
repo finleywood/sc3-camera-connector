@@ -11,10 +11,11 @@ add_subdirectory(src)
 
 find_package(k4a REQUIRED)
 find_package(OpenCV REQUIRED)
+find_package(CURL REQUIRED)
 
 # Add your source files
 add_executable(${PROJECT_NAME} ${SOURCES} ${HEADERS})
 
-target_link_libraries(${PROJECT_NAME} PRIVATE k4a::k4a ${OpenCV_LIBS})
+target_link_libraries(${PROJECT_NAME} PRIVATE k4a::k4a ${OpenCV_LIBS} CURL::libcurl)
 
 target_include_directories(${PROJECT_NAME} PRIVATE include)

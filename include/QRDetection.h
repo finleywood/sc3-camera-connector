@@ -1,4 +1,6 @@
-#include <opencv2/opencv.hpp>
+#pragma once
+
+#include <string>
 
 struct QRDetection {
     std::string identifier;
