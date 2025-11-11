@@ -19,7 +19,8 @@ public:
     QueueStatus_t CurrentStatus = QueueStatus_t::STOPPED;
 
     UploadQueue(UpstreamTransport* transport, uint8_t max_retry, uint8_t max_size = 64) :
-        max_size(max_size)
+        max_size(max_size),
+        max_retry(max_retry)
     {
         this->upload_q_ptr = std::unique_ptr<std::queue<UploadItem>> { new std::queue<UploadItem>() };
         this->transport_ptr = std::unique_ptr<UpstreamTransport> { transport };

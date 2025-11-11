@@ -78,12 +78,16 @@ void UploadQueue::MainLoop()
             continue;
         }
 
-        while (item.retry_num <= this->max_retry) {
-            item.retry_num++;
-            LOG(INFO) << "Starting upload attempt " << item.retry_num << " out of " << this->max_retry << "." << std::endl;
+        while (true) {
+            item.retry_num = item.retry_num + 1;
+            LOG(INFO) << "Starting upload attempt " << static_cast<int>(item.retry_num) << " out of " << static_cast<int>(this->max_retry) << "." << std::endl;
             bool upload_success = this->transport_ptr->UploadQueueItem(item);
             if(upload_success) {
                 LOG(INFO) << "Upload success." << std::endl;
+                break;
+            }
+            if(item.retry_num == this->max_retry) {
+                LOG(WARNING) << "Max retries hit, falling back." << std::endl;
                 break;
             }
             LOG(INFO) << "Upload failed. Will Retry in 5s." << std::endl;
@@ -91,11 +95,12 @@ void UploadQueue::MainLoop()
         }
 
         LOG(INFO) << "Falling back to USB." << std::endl;
-        if(this->transport_ptr->USBFallback(item)) {
-            LOG(INFO) << "USB Fallback success." << std::endl;
-        } else {
-            LOG(INFO) << "USB Fallback failed, cannot store event." << std::endl;
-        }
+        // TODO
+        // if(this->transport_ptr->USBFallback(item)) {
+        //     LOG(INFO) << "USB Fallback success." << std::endl;
+        // } else {
+        //     LOG(INFO) << "USB Fallback failed, cannot store event." << std::endl;
+        // }
 
         std::this_thread::sleep_for(std::chrono::milliseconds(1000));
     }

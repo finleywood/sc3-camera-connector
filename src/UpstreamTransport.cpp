@@ -1,11 +1,12 @@
 #include "UpstreamTransport.h"
 
-bool UpstreamTransport::UploadQueueItem(UploadItem item_to_upload)
-{
+#include <aixlog/aixlog.hpp>
 
-}
+UpstreamTransport::~UpstreamTransport() = default;
 
 bool UpstreamTransport::USBFallback(UploadItem item_to_download)
 {
-    
+    LOG(INFO) << "Attempting USB fallback." << std::endl;
+
+    return false;
 }

@@ -1,5 +1,7 @@
 #include "CameraManager.h"
 
+#include <chrono>
+
 void CameraManager::RegsiterDetectionCallback(det_callback_t callback_func)
 {
     this->detection_callback = callback_func;
@@ -35,6 +37,115 @@ cv::Mat CameraManager::K4ARGBToCV(k4a_image_t* img)
     return bgr_mat;
 }
 
+EncodedImage CameraManager::EncodeToJpeg(k4a_image_t* image, int quality)
+{
+    EncodedImage result;
+
+    if (!image)
+        return result;
+
+    uint8_t* img_buf = k4a_image_get_buffer(*image);
+    int width  = k4a_image_get_width_pixels(*image);
+    int height = k4a_image_get_height_pixels(*image);
+    k4a_image_format_t format = k4a_image_get_format(*image);
+
+    cv::Mat mat;
+
+    if (format == K4A_IMAGE_FORMAT_COLOR_BGRA32) {
+        cv::Mat bgra(height, width, CV_8UC4, img_buf);
+        cv::cvtColor(bgra, mat, cv::COLOR_BGRA2BGR);
+    } 
+    else if (format == K4A_IMAGE_FORMAT_COLOR_MJPG) {
+        // Already JPEG-encoded, just copy
+        result.size = k4a_image_get_size(*image);
+        result.data.reset(new uint8_t[result.size]);
+        memcpy(result.data.get(), img_buf, result.size);
+        return result;
+    } 
+    else {
+        LOG(ERROR) << "Unsupported image format for JPEG encoding" << std::endl;
+        return result;
+    }
+
+    std::vector<uint8_t> jpeg_buf;
+    std::vector<int> params = { cv::IMWRITE_JPEG_QUALITY, quality };
+
+    if (!cv::imencode(".jpg", mat, jpeg_buf, params)) {
+        LOG(ERROR) << "JPEG encoding failed" << std::endl;
+        return result;
+    }
+
+    result.size = jpeg_buf.size();
+    result.data.reset(new uint8_t[result.size]);
+    std::copy(jpeg_buf.begin(), jpeg_buf.end(), result.data.get());
+
+    return result;
+}
+
+EncodedImage CameraManager::EncodeToPng(k4a_image_t* image) {
+    EncodedImage result;
+    
+    if (image == nullptr) {
+        return result;
+    }
+    
+    int width = k4a_image_get_width_pixels(*image);
+    int height = k4a_image_get_height_pixels(*image);
+    k4a_image_format_t format = k4a_image_get_format(*image);
+    uint8_t* buffer = k4a_image_get_buffer(*image);
+    
+    if (buffer == nullptr || width == 0 || height == 0) {
+        return result;
+    }
+    
+    cv::Mat mat;
+    
+    // Convert k4a format to OpenCV Mat
+    switch (format) {
+        case K4A_IMAGE_FORMAT_COLOR_BGRA32:
+            mat = cv::Mat(height, width, CV_8UC4, buffer);
+            break;
+        case K4A_IMAGE_FORMAT_COLOR_MJPG:
+            // MJPG needs decoding first
+            {
+                std::vector<uint8_t> jpgData(buffer, buffer + k4a_image_get_size(*image));
+                mat = cv::imdecode(jpgData, cv::IMREAD_COLOR);
+            }
+            break;
+        case K4A_IMAGE_FORMAT_DEPTH16:
+        case K4A_IMAGE_FORMAT_IR16:
+            mat = cv::Mat(height, width, CV_16UC1, buffer);
+            break;
+        case K4A_IMAGE_FORMAT_CUSTOM8:
+            mat = cv::Mat(height, width, CV_8UC1, buffer);
+            break;
+        case K4A_IMAGE_FORMAT_CUSTOM16:
+            mat = cv::Mat(height, width, CV_16UC1, buffer);
+            break;
+        default:
+            return result;
+    }
+    
+    if (mat.empty()) {
+        return result;
+    }
+    
+    std::vector<uint8_t> encodedBuffer;
+    std::vector<int> params;
+    params.push_back(cv::IMWRITE_PNG_COMPRESSION);
+    params.push_back(3);
+    
+    if (!cv::imencode(".png", mat, encodedBuffer, params)) {
+        return result;
+    }
+    
+    result.size = encodedBuffer.size();
+    result.data.reset(new uint8_t[result.size]);
+    std::copy(encodedBuffer.begin(), encodedBuffer.end(), result.data.get());
+    
+    return result;
+}
+
 QRDetection CameraManager::LookForQR(k4a_image_t* img) 
 {
     cv::Mat cv_mat_img = this->K4ARGBToCV(img);
@@ -64,15 +175,55 @@ void CameraManager::HandleCapture(k4a_capture_t* cap) {
 
     // Look for and decode QR codes
     if(color_image != nullptr) {
-        QRDetection found_qr = this->LookForQR(&color_image);
+        LOG(TRACE) << "Cooldown: " << (this->cooldown_active ? "Active" : "Not Active") << std::endl; 
+        QRDetection found_qr;
+        if(!cooldown_active)
+            found_qr = this->LookForQR(&color_image);
+
         if(!found_qr.identifier.empty() && found_qr.identifier != this->prev_detection.identifier) {
-            found_qr.rgb_image_buf = k4a_image_get_buffer(color_image);
-            if(this->enable_depth) {
-                found_qr.depth_image_buf = k4a_image_get_buffer(depth_image);
+            EncodedImage rgb_jpeg = this->EncodeToJpeg(&color_image);
+            if(!rgb_jpeg.valid()) {
+                LOG(ERROR) << "RGB JPEG INVALID, CANNOT CONTINUE!" << std::endl;
+                if(color_image != nullptr)
+                    k4a_image_release(color_image);
+                if(depth_image != nullptr)
+                    k4a_image_release(depth_image);
+                return;
             }
-            this->prev_detection = found_qr;
+            found_qr.rgb_img = rgb_jpeg;
+            if(this->enable_depth) {
+                EncodedImage depth_png = this->EncodeToPng(&depth_image);
+                if(!depth_png.valid()) {
+                    LOG(WARNING) << "DEPTH PNG INVALID, WILL CONTINUE WITHOUT." << std::endl;
+                } else {
+                    found_qr.depth_image = depth_png;
+                }
+            }
+            auto clock = std::chrono::system_clock::now();
+            uint64_t unix_time = std::chrono::duration_cast<std::chrono::seconds>(clock.time_since_epoch()).count();
+            found_qr.event_time = unix_time;
             this->detection_callback(found_qr);
+        } 
+
+        // Spam guard
+        if((this->prev_detection.identifier != found_qr.identifier) && !this->cooldown_active) {
+            // Start cooldown
+            this->cooldown_active = true;
+            LOG(INFO) << "Lost QR. Cooldown active for next " << static_cast<int>(this->max_frames_since_last) << " frames." << std::endl;
+            this->prev_detection = {};
         }
+
+        if(this->num_frames_since_last >= this->max_frames_since_last && this->cooldown_active) {
+            this->cooldown_active = false;
+            LOG(INFO) << "Cooldown over. Starting detections again." << std::endl;
+            this->num_frames_since_last = 0;
+        }
+
+        if(this->cooldown_active)
+            this->num_frames_since_last = this->num_frames_since_last + 1;
+
+        
+        this->prev_detection = found_qr;
     } else {
         LOG(INFO) << "Could not get color image" << std::endl;
     }

@@ -1,11 +1,15 @@
 set(HEADERS 
     ${HEADERS}
     ${CMAKE_CURRENT_SOURCE_DIR}/aixlog/aixlog.hpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/json/json.hpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/json/json_fwd.hpp
     ${CMAKE_CURRENT_SOURCE_DIR}/CameraManager.h
     ${CMAKE_CURRENT_SOURCE_DIR}/QRDetection.h
     ${CMAKE_CURRENT_SOURCE_DIR}/HttpTransport.h
     ${CMAKE_CURRENT_SOURCE_DIR}/UploadItem.h
     ${CMAKE_CURRENT_SOURCE_DIR}/UploadQueue.h
     ${CMAKE_CURRENT_SOURCE_DIR}/UpstreamTransport.h
+    ${CMAKE_CURRENT_SOURCE_DIR}/ApplicationConfig.h
+    ${CMAKE_CURRENT_SOURCE_DIR}/EncodedImage.h
     PARENT_SCOPE
 )
