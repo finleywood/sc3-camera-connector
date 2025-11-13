@@ -11,5 +11,7 @@ set(HEADERS
     ${CMAKE_CURRENT_SOURCE_DIR}/UpstreamTransport.h
     ${CMAKE_CURRENT_SOURCE_DIR}/ApplicationConfig.h
     ${CMAKE_CURRENT_SOURCE_DIR}/EncodedImage.h
+    ${CMAKE_CURRENT_SOURCE_DIR}/ImageUtils.h
+    ${CMAKE_CURRENT_SOURCE_DIR}/UINotifier.h
     PARENT_SCOPE
 )

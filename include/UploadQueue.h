@@ -8,6 +8,7 @@
 
 #include "UploadItem.h"
 #include "UpstreamTransport.h"
+#include "UINotifier.h"
 
 typedef enum {
     STOPPED,
@@ -17,6 +18,7 @@ typedef enum {
 class UploadQueue {
 public:
     QueueStatus_t CurrentStatus = QueueStatus_t::STOPPED;
+    UINotifier* notifier;
 
     UploadQueue(UpstreamTransport* transport, uint8_t max_retry, uint8_t max_size = 64) :
         max_size(max_size),
@@ -29,6 +31,10 @@ public:
     void Enqueue(UploadItem);
     bool Start();
     void Stop();
+
+    UploadItem* FindInQueueById(std::string);
+
+    void ApproveAction(std::string item_uid);
 
 private:
     std::thread q_thread;

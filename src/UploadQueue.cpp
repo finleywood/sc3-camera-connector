@@ -3,20 +3,39 @@
 
 #include <stdexcept>
 
+UploadItem* UploadQueue::FindInQueueById(std::string uid) {
+    this->q_lock.lock();
+    std::queue<UploadItem> temp = *this->upload_q_ptr.get();  // make a copy
+    while (!temp.empty()) {
+        UploadItem& obj = temp.front();
+        if (obj.qr_det.uid == uid) {
+            this->q_lock.unlock();
+            return &temp.front();
+        }
+        temp.pop();
+    }
+    this->q_lock.unlock();
+    return nullptr;
+}
+
 void UploadQueue::Enqueue(UploadItem item_to_upload)
 {
+    // lock for critsec
+    this->q_lock.lock();
     if(this->upload_q_ptr->size() == this->max_size) {
         throw std::out_of_range("Cannot push anymore to the queue, it is full.");
         return;
     }
 
-    // lock for critsec
-    this->q_lock.lock();
-
     this->upload_q_ptr->emplace(item_to_upload);
 
     // don't forget to unlock
     this->q_lock.unlock();
+
+    // Tell UI if possible
+    if(notifier) {
+        notifier->SendMessage(format_ui_message(MessageType::NEW_DETECTION, item_to_upload.qr_det.uid));
+    }
 }
 
 UploadItem UploadQueue::Dequeue()
@@ -71,10 +90,21 @@ void UploadQueue::MainLoop()
 
     while(!this->should_stop) {
         UploadItem item;
+        // lock while dequeuing
+        this->q_lock.lock();
         try {
             item = this->Dequeue();
         } catch(std::exception& e) {
             std::this_thread::sleep_for(std::chrono::milliseconds(1000));
+            continue;
+        }
+        if(!item.approved) {
+            try {
+                this->Enqueue(item);
+            } catch(std::exception& e) {
+                LOG(WARNING) << "Enqueue after dequeue failed. Due to " << e.what() << std::endl;
+            }
+            this->q_lock.unlock();
             continue;
         }
 
@@ -105,4 +135,13 @@ void UploadQueue::MainLoop()
         std::this_thread::sleep_for(std::chrono::milliseconds(1000));
     }
 
+}
+
+void UploadQueue::ApproveAction(std::string item_uid)
+{
+    UploadItem* relevant_item = this->FindInQueueById(item_uid);
+    if(relevant_item) {
+        relevant_item->approved = true;
+        LOG(INFO) << "Approved upload item: " << item_uid.c_str() << std::endl;
+    }
 }

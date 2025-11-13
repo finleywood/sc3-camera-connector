@@ -9,4 +9,5 @@ struct QRDetection {
     EncodedImage rgb_img;
     EncodedImage depth_image;
     uint64_t event_time;
+    std::string uid;
 };

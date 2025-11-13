@@ -9,11 +9,13 @@
 #include "UploadItem.h"
 #include "Defaults.h"
 #include "ApplicationConfig.h"
+#include "UINotifier.h"
 
 static UploadQueue* upload_queue;
+static UINotifier* ui_notifier;
 static json app_config;
 
-void detection_callback(QRDetection detection)
+void detection_callback(const QRDetection& detection)
 {
     LOG(INFO) << "QR DETECTION - " << "Found ID: " << detection.identifier.c_str() << std::endl;
     if(upload_queue != nullptr) {
@@ -115,7 +117,6 @@ int main(int argc, char** argv)
         return 0;
     }
     // Init logger
-
     AixLog::Log::init<AixLog::SinkCout>(static_cast<AixLog::Severity>(args.has_verbosity ? args.verbosity : SC3_LOG_LEVEL));
 
     // Get app config
@@ -126,11 +127,21 @@ int main(int argc, char** argv)
     upload_queue = new UploadQueue(new HttpTransport(server_url), 3);
     upload_queue->Start();
 
-    auto cam_manager_1 = new CameraManager(0, true);
-    cam_manager_1->RegsiterDetectionCallback(detection_callback);
-    bool status = cam_manager_1->Start();
+    std::string socket_path = app_config["ui_socket_path"];
+    ui_notifier = new UINotifier(socket_path, upload_queue);
+    ui_notifier->Start();
 
-    // Stop upload queue if camera manager stops
+    upload_queue->notifier = ui_notifier;
+
+    CameraManager camera_manager(0, true);
+    camera_manager.RegisterDetectionCallback(detection_callback);
+    bool status = camera_manager.Start(true);
+
+    camera_manager.Stop();
+    // Stop upload queue & ui notifier if camera manager stops
+    ui_notifier->Stop();
     upload_queue->Stop();
     return status ? 0 : -1;
 }
+
+//TODO: Graceful shutdown

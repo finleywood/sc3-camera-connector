@@ -1,6 +1,6 @@
 {
   "name": "SC3 Dev Container",
-  "image": "sc3-app-builder1",
+  "image": "trixie_amd64_builder",
   "runArgs": ["--user", "root"],
   "remoteUser": "root",
   "updateRemoteUserUID": false,

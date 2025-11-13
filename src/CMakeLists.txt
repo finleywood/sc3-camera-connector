@@ -5,5 +5,7 @@ set(SOURCES
     ${CMAKE_CURRENT_SOURCE_DIR}/UploadQueue.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/UpstreamTransport.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/HttpTransport.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/ImageUtils.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/UINotifier.cpp
     PARENT_SCOPE
 )
