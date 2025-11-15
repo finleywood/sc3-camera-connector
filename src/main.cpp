@@ -128,10 +128,8 @@ int main(int argc, char** argv)
     upload_queue->Start();
 
     std::string socket_path = app_config["ui_socket_path"];
-    ui_notifier = new UINotifier(socket_path, upload_queue);
+    ui_notifier = new UINotifier(socket_path);
     ui_notifier->Start();
-
-    upload_queue->notifier = ui_notifier;
 
     CameraManager camera_manager(0, true);
     camera_manager.RegisterDetectionCallback(detection_callback);

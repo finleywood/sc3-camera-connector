@@ -1,4 +1,5 @@
 #include "UINotifier.h"
+#include "CommandManager.h"
 
 #include <aixlog/aixlog.hpp>
 #include <chrono>
@@ -14,21 +15,6 @@ static void SetNonBlocking(int fd) {
     int flags = fcntl(fd, F_GETFL, 0);
     if (flags == -1) flags = 0;
     fcntl(fd, F_SETFL, flags | O_NONBLOCK);
-}
-
-std::string format_ui_message(MessageType type, std::string msg)
-{
-    std::string msg_type_str = MessageTypeMap[type];
-    std::string msg_to_send = msg_type_str + " " + msg;
-    return msg_to_send;
-}
-
-MessageType message_type_str_to_enum(std::string msg_type) {
-    for (const auto& pair : MessageTypeMap) {
-        if (pair.second == msg_type)
-            return pair.first;
-    }
-    return MessageType::UNKNOWN;
 }
 
 bool UINotifier::Start(bool is_blocking)
@@ -294,11 +280,6 @@ void UINotifier::ProcessMessage(std::string msg)
         return;
     }
 
-    switch(msg_type_enum) {
-        case MessageType::DETECTION_CONFIRM:
-            this->uploader_queue->ApproveAction(msg_body);
-            break;
-        default:
-            break;
-    }
+    CommandManager& cm = CommandManager::GetCM();
+    cm.SubmitMessage(msg_type_enum, msg_body);
 }

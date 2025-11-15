@@ -7,5 +7,7 @@ set(SOURCES
     ${CMAKE_CURRENT_SOURCE_DIR}/HttpTransport.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/ImageUtils.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/UINotifier.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/CommandManager.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/CommandReceiver.cpp
     PARENT_SCOPE
 )

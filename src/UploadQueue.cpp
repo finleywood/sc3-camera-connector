@@ -3,6 +3,40 @@
 
 #include <stdexcept>
 
+bool UploadQueue::AllowMessage(MessageType msg_type)
+{
+    switch(msg_type) {
+        case MessageType::DETECTION_CONFIRM:
+            return true;
+            break;
+        default:
+            return false;
+            break;
+    }
+}
+
+void UploadQueue::ProcessMessage(MessageType msg_type, std::string msg_content)
+{
+    switch(msg_type) {
+        case MessageType::DETECTION_CONFIRM:
+            ProcessDetectionConfirm(msg_content);
+            break;
+        default:
+            break;
+    }
+}
+
+void UploadQueue::ProcessDetectionConfirm(std::string uid)
+{
+    UploadItem* item_found = this->FindInQueueById(uid);
+    if(!item_found) {
+        LOG(WARNING) << "Detection item with ID: " << uid.c_str() << " not found in queue." << std::endl;
+        return;
+    }
+
+    item_found->approved = true;
+}
+
 UploadItem* UploadQueue::FindInQueueById(std::string uid) {
     this->q_lock.lock();
     std::queue<UploadItem> temp = *this->upload_q_ptr.get();  // make a copy
@@ -33,9 +67,8 @@ void UploadQueue::Enqueue(UploadItem item_to_upload)
     this->q_lock.unlock();
 
     // Tell UI if possible
-    if(notifier) {
-        notifier->SendMessage(format_ui_message(MessageType::NEW_DETECTION, item_to_upload.qr_det.uid));
-    }
+    CommandManager& cm = CommandManager::GetCM();
+    cm.SubmitMessage(MessageType::NEW_DETECTION, item_to_upload.qr_det.uid);
 }
 
 UploadItem UploadQueue::Dequeue()
@@ -135,13 +168,4 @@ void UploadQueue::MainLoop()
         std::this_thread::sleep_for(std::chrono::milliseconds(1000));
     }
 
-}
-
-void UploadQueue::ApproveAction(std::string item_uid)
-{
-    UploadItem* relevant_item = this->FindInQueueById(item_uid);
-    if(relevant_item) {
-        relevant_item->approved = true;
-        LOG(INFO) << "Approved upload item: " << item_uid.c_str() << std::endl;
-    }
 }
