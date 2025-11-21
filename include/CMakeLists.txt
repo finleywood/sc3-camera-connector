@@ -14,7 +14,12 @@ set(HEADERS
     ${CMAKE_CURRENT_SOURCE_DIR}/ImageUtils.h
     ${CMAKE_CURRENT_SOURCE_DIR}/UINotifier.h
     ${CMAKE_CURRENT_SOURCE_DIR}/MessageTypes.h
+    ${CMAKE_CURRENT_SOURCE_DIR}/Messages/BaseMessage.h
+    ${CMAKE_CURRENT_SOURCE_DIR}/Messages/StringMessage.h
+    ${CMAKE_CURRENT_SOURCE_DIR}/Messages/EventMessage.h
     ${CMAKE_CURRENT_SOURCE_DIR}/CommandManager.h
     ${CMAKE_CURRENT_SOURCE_DIR}/CommandReceiver.h
+    ${CMAKE_CURRENT_SOURCE_DIR}/USBDeviceManager.h
+    ${CMAKE_CURRENT_SOURCE_DIR}/USBDownload.h
     PARENT_SCOPE
 )

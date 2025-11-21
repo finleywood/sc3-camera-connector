@@ -6,17 +6,28 @@
 #include <map>
 #include "UploadQueue.h"
 #include "MessageTypes.h"
+#include "Messages/BaseMessage.h"
+#include "Messages/StringMessage.h"
+#include "CommandManager.h"
+#include "CommandReceiver.h"
 
-class UINotifier {
+class UINotifier : public CommandReceiver {
 public:
     UINotifier(std::string socket_path)
-        : socket_path(socket_path),
+        : CommandReceiver(),
+        socket_path(socket_path),
         current_status(SocketStatus::UINITIALIZED)
-    {}
+    {
+        CommandManager::GetCM().Register("UINotifier", this);
+    }
 
-    void SendMessage(std::string);
+    bool SendMessage(std::string);
     bool Start(bool is_blocking = false);
     void Stop();
+
+    // Command Receiver stuff
+    virtual bool AllowMessage(MessageType) override;
+    virtual void ProcessMessage(const BaseMessage& msg) override;
 
 private:
     std::atomic<SocketStatus> current_status;
@@ -37,6 +48,13 @@ private:
     void HandleWaitingForMessage();
     void HandleClosing();
 
-    void ProcessMessage(std::string);
+    void ProcessClientMessage(std::string);
+
+    // Socket handlers IN
+    void ProcessStartCollection(std::string);
+    void ProcessUSBList();
+
+    // Command manager handlers OUT
+    void ProcessSendStringMessage(const StringMessage&);
 
 };

@@ -6,74 +6,57 @@
 bool UploadQueue::AllowMessage(MessageType msg_type)
 {
     switch(msg_type) {
-        case MessageType::DETECTION_CONFIRM:
+        case MessageType::START_UPLOAD:
             return true;
-            break;
         default:
             return false;
-            break;
     }
 }
 
-void UploadQueue::ProcessMessage(MessageType msg_type, std::string msg_content)
+void UploadQueue::ProcessMessage(const BaseMessage& msg)
 {
-    switch(msg_type) {
-        case MessageType::DETECTION_CONFIRM:
-            ProcessDetectionConfirm(msg_content);
+    switch(msg.MsgType) {
+        case MessageType::START_UPLOAD:
+            this->ProcessNewUpload(static_cast<const EventMessage&>(msg));
             break;
         default:
             break;
     }
 }
 
-void UploadQueue::ProcessDetectionConfirm(std::string uid)
+
+void UploadQueue::ProcessNewUpload(const EventMessage& msg)
 {
-    UploadItem* item_found = this->FindInQueueById(uid);
-    if(!item_found) {
-        LOG(WARNING) << "Detection item with ID: " << uid.c_str() << " not found in queue." << std::endl;
-        return;
+    LOG(INFO) << "Upload queue received request to upload event with UID: " << msg.Uid.c_str() << "." << std::endl;
+    try {
+        UploadItem item_to_upload = {};
+        item_to_upload.uid = msg.Uid;
+        item_to_upload.qr_det = msg.QrDetection;
+        this->Enqueue(item_to_upload);
+    } catch(std::exception& e) {
+        LOG(WARNING) << "Failed to queue for upload event with UID: " << msg.Uid.c_str() << ", because of: " << e.what() << std::endl;
     }
-
-    item_found->approved = true;
-}
-
-UploadItem* UploadQueue::FindInQueueById(std::string uid) {
-    this->q_lock.lock();
-    std::queue<UploadItem> temp = *this->upload_q_ptr.get();  // make a copy
-    while (!temp.empty()) {
-        UploadItem& obj = temp.front();
-        if (obj.qr_det.uid == uid) {
-            this->q_lock.unlock();
-            return &temp.front();
-        }
-        temp.pop();
-    }
-    this->q_lock.unlock();
-    return nullptr;
 }
 
 void UploadQueue::Enqueue(UploadItem item_to_upload)
 {
     // lock for critsec
     this->q_lock.lock();
-    if(this->upload_q_ptr->size() == this->max_size) {
+    if(this->upload_q.size() == this->max_size) {
         throw std::out_of_range("Cannot push anymore to the queue, it is full.");
         return;
     }
 
-    this->upload_q_ptr->emplace(item_to_upload);
+    this->upload_q.emplace(item_to_upload);
+    LOG(INFO) << "Placed detection " << item_to_upload.uid.c_str() << " in queue." << std::endl;
 
     // don't forget to unlock
     this->q_lock.unlock();
-
-    // Tell UI if possible
-    CommandManager& cm = CommandManager::GetCM();
-    cm.SubmitMessage(MessageType::NEW_DETECTION, item_to_upload.qr_det.uid);
 }
 
 UploadItem UploadQueue::Dequeue()
 {
-    if(this->upload_q_ptr->size() == 0) {
+    if(this->upload_q.size() == 0) {
         throw std::out_of_range("Cannot dequeue, as queue is empty.");
         return {};
     }
@@ -81,8 +64,8 @@ UploadItem UploadQueue::Dequeue()
     // lock
     this->q_lock.lock();
 
-    UploadItem ret = this->upload_q_ptr->front();
-    this->upload_q_ptr->pop();
+    UploadItem ret = this->upload_q.front();
+    this->upload_q.pop();
 
     // unlock
     this->q_lock.unlock();
@@ -124,29 +107,28 @@ void UploadQueue::MainLoop()
     while(!this->should_stop) {
         UploadItem item;
         // lock while dequeuing
-        this->q_lock.lock();
         try {
             item = this->Dequeue();
         } catch(std::exception& e) {
             std::this_thread::sleep_for(std::chrono::milliseconds(1000));
             continue;
         }
-        if(!item.approved) {
-            try {
-                this->Enqueue(item);
-            } catch(std::exception& e) {
-                LOG(WARNING) << "Enqueue after dequeue failed. Due to " << e.what() << std::endl;
-            }
-            this->q_lock.unlock();
-            continue;
-        }
+        CommandManager& cm = CommandManager::GetCM();
 
+        // Notify ui of upload started
+        StringMessage upload_start_message;
+        upload_start_message.MsgType = MessageType::UPLOAD_STARTED;
+        upload_start_message.content = item.uid;
+        cm.SubmitMessage(upload_start_message);
+
+        bool upload_sucess = false;
         while (true) {
             item.retry_num = item.retry_num + 1;
             LOG(INFO) << "Starting upload attempt " << static_cast<int>(item.retry_num) << " out of " << static_cast<int>(this->max_retry) << "." << std::endl;
             bool upload_success = this->transport_ptr->UploadQueueItem(item);
             if(upload_success) {
                 LOG(INFO) << "Upload success." << std::endl;
+                upload_success = true;
                 break;
             }
             if(item.retry_num == this->max_retry) {
@@ -157,7 +139,12 @@ void UploadQueue::MainLoop()
             std::this_thread::sleep_for(std::chrono::milliseconds(5000));
         }
 
-        LOG(INFO) << "Falling back to USB." << std::endl;
+        StringMessage upload_status_msg;
+        upload_status_msg.content = item.uid;
+        upload_status_msg.MsgType = upload_sucess ? MessageType::UPLOAD_SUCESS : MessageType::UPLOAD_FAILURE;
+        cm.SubmitMessage(upload_status_msg);
+
+        // LOG(INFO) << "Falling back to USB." << std::endl;
         // TODO
         // if(this->transport_ptr->USBFallback(item)) {
         //     LOG(INFO) << "USB Fallback success." << std::endl;

@@ -14,20 +14,39 @@ enum class SocketStatus {
 };
 
 enum class MessageType {
-    NEW_DETECTION,
-    DETECTION_CONFIRM,
-    DETECTION_UPLOAD_STATUS,
-    LIST_USB,
-    SET_USB,
+    START_COLLECTION,
+    COLLECTION_SUCCESS,
+    COLLECTION_FAILURE,
+    COLLECTION_MANUAL_INPUT,
+    START_UPLOAD,
+    UPLOAD_STARTED,
+    UPLOAD_SUCESS,
+    UPLOAD_FAILURE,
+    USB_DOWNLOAD,
+    USB_DOWNLOAD_SUCESS,
+    USB_DOWNLOAD_FAILURE,
+    USB_LIST,
+    USB_DEV,
+    USB_SET,
     UNKNOWN
 };
 
 static std::map<MessageType, const char*> MessageTypeMap = {
-    {MessageType::NEW_DETECTION, "NEW_DETECTION"},
-    {MessageType::DETECTION_CONFIRM, "DETECTION_CONFIRM"},
-    {MessageType::DETECTION_UPLOAD_STATUS, "DETECTION_UPLOAD_STATUS"},
-    {MessageType::LIST_USB, "LIST_USB"},
-    {MessageType::SET_USB, "SET_USB"}
+    {MessageType::START_COLLECTION, "START_COLLECTION"},
+    {MessageType::COLLECTION_SUCCESS, "COLLECTION_SUCCESS"},
+    {MessageType::COLLECTION_FAILURE, "COLLECTION_FAILURE"},
+    {MessageType::COLLECTION_MANUAL_INPUT, "COLLECTION_MANUAL_INPUT"},
+    {MessageType::START_UPLOAD, "START_UPLOAD"},
+    {MessageType::UPLOAD_STARTED, "UPLOAD_STARTED"},
+    {MessageType::UPLOAD_SUCESS, "UPLOAD_SUCESS"},
+    {MessageType::UPLOAD_FAILURE, "UPLOAD_FAILURE"},
+    {MessageType::USB_DOWNLOAD, "USB_DOWNLOAD"},
+    {MessageType::USB_DOWNLOAD_SUCESS, "USB_DOWNLOAD_SUCESS"},
+    {MessageType::USB_DOWNLOAD_FAILURE, "USB_DOWNLOAD_FAILURE"},
+    {MessageType::USB_LIST, "USB_LIST"},
+    {MessageType::USB_DEV, "USB_DEV"},
+    {MessageType::USB_SET, "USB_SET"},
+    {MessageType::UNKNOWN, "UNKNOWN"}
 };
 
 inline std::string format_ui_message(MessageType type, std::string msg)
@@ -44,4 +63,12 @@ inline MessageType message_type_str_to_enum(std::string msg_type)
             return pair.first;
     }
     return MessageType::UNKNOWN;
+}
+
+inline std::string message_type_enum_to_str(MessageType msg_type)
+{
+    if(MessageTypeMap.find(msg_type) == MessageTypeMap.end())
+        return MessageTypeMap[MessageType::UNKNOWN];
+    
+    return MessageTypeMap[msg_type];
 }

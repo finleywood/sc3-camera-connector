@@ -1,5 +1,4 @@
 #include "UINotifier.h"
-#include "CommandManager.h"
 
 #include <aixlog/aixlog.hpp>
 #include <chrono>
@@ -15,6 +14,46 @@ static void SetNonBlocking(int fd) {
     int flags = fcntl(fd, F_GETFL, 0);
     if (flags == -1) flags = 0;
     fcntl(fd, F_SETFL, flags | O_NONBLOCK);
+}
+
+bool UINotifier::AllowMessage(MessageType msg_type)
+{
+    switch(msg_type) {
+        case MessageType::COLLECTION_SUCCESS:
+        case MessageType::COLLECTION_FAILURE:
+        case MessageType::UPLOAD_STARTED:
+        case MessageType::UPLOAD_SUCESS:
+        case MessageType::UPLOAD_FAILURE:
+        case MessageType::USB_DEV:
+            return true;
+            break;
+        default:
+            return false;
+            break;
+    }
+}
+
+void UINotifier::ProcessMessage(const BaseMessage& msg)
+{
+    switch(msg.MsgType) {
+        case MessageType::COLLECTION_SUCCESS:
+        case MessageType::COLLECTION_FAILURE:
+        case MessageType::UPLOAD_STARTED:
+        case MessageType::UPLOAD_SUCESS:
+        case MessageType::UPLOAD_FAILURE:
+        case MessageType::USB_DEV:
+            this->ProcessSendStringMessage(static_cast<const StringMessage&>(msg));
+            return;
+        default:
+            return;
+    }
+}
+
+void UINotifier::ProcessSendStringMessage(const StringMessage& msg)
+{
+    bool msg_sent = this->SendMessage(format_ui_message(msg.MsgType, msg.content));
+    if(!msg_sent)
+        LOG(WARNING) << "Unable to send message for " << msg.content.c_str() << "." << std::endl;
 }
 
 bool UINotifier::Start(bool is_blocking)
@@ -168,14 +207,14 @@ void UINotifier::HandleWaitingForConnection()
         }
         is_listening = true;
     }
-    LOG(DEBUG) << "listen() success" << std::endl;
+    LOG(TRACE) << "listen() success" << std::endl;
 
     // Non-blocking accept
     int cfd = accept(this->server_fd, nullptr, nullptr);
     if (cfd < 0) {
         if (errno == EAGAIN || errno == EWOULDBLOCK) {
             // No connection yet, just keep waiting
-            LOG(DEBUG) << "accept() no connection yet." << std::endl;
+            LOG(TRACE) << "accept() no connection yet." << std::endl;
             return;
         }
         // Real error
@@ -204,6 +243,7 @@ void UINotifier::HandleWaitingForMessage()
     if (msg_bytes > 0) {
         buf[msg_bytes] = '\0';
         LOG(INFO) << "Got message: " << buf << std::endl;
+        this->ProcessClientMessage(buf);
         return;
     }
 
@@ -219,7 +259,7 @@ void UINotifier::HandleWaitingForMessage()
     // msg_bytes < 0
     if (errno == EAGAIN || errno == EWOULDBLOCK) {
         // No data yet
-        LOG(DEBUG) << "read() no data yet" << std::endl;
+        LOG(TRACE) << "read() no data yet" << std::endl;
         return;
     }
 
@@ -248,17 +288,34 @@ void UINotifier::HandleClosing()
     }
 }
 
-void UINotifier::SendMessage(std::string msg)
+bool UINotifier::SendMessage(std::string msg)
 {
-    if(this->current_status != SocketStatus::WAITING_FOR_CONNECTION || this->current_status != SocketStatus::WAITING_FOR_MESSAGE || this->client_fd < 0) {
+    LOG(INFO) << "Current Socket status = " << static_cast<int>(this->current_status.load()) << " Client fd = " << this->client_fd << std::endl;
+    if((this->current_status != SocketStatus::WAITING_FOR_CONNECTION && this->current_status != SocketStatus::WAITING_FOR_MESSAGE) || this->client_fd < 0) {
         LOG(DEBUG) << "Cannot send message " << msg.c_str() << " as socket is not initialized." << std::endl;
-        return;
+        return false;
     }
 
     write(this->client_fd, msg.c_str(), msg.size());
+    return true;
 }
 
-void UINotifier::ProcessMessage(std::string msg)
+void UINotifier::ProcessStartCollection(std::string uid)
+{
+    StringMessage start_col_msg;
+    start_col_msg.MsgType = MessageType::START_COLLECTION;
+    start_col_msg.content = uid;
+    CommandManager::GetCM().SubmitMessage(start_col_msg);
+}
+
+void UINotifier::ProcessUSBList()
+{
+    StringMessage usb_list_msg;
+    usb_list_msg.MsgType = MessageType::USB_LIST;
+    CommandManager::GetCM().SubmitMessage(usb_list_msg);
+}
+
+void UINotifier::ProcessClientMessage(std::string msg)
 {
     std::istringstream iss(msg);
     std::vector<std::string> parts;
@@ -267,19 +324,29 @@ void UINotifier::ProcessMessage(std::string msg)
         parts.push_back(word);
     }
 
-    if(parts.size() < 2) {
+    if(parts.size() > 2) {
         LOG(WARNING) << "Invalid formatting on message received: " << msg.c_str() << std::endl;
         return;
     }
 
     std::string msg_type = parts[0];
-    std::string msg_body = parts[1];
+    std::string msg_body;
+    if(parts.size() == 2)
+        msg_body = parts[1];
     MessageType msg_type_enum = message_type_str_to_enum(msg_type);
     if(msg_type_enum == MessageType::UNKNOWN) {
         LOG(WARNING) << "Unknown message type received: " << msg_type.c_str() << std::endl;
         return;
     }
 
-    CommandManager& cm = CommandManager::GetCM();
-    cm.SubmitMessage(msg_type_enum, msg_body);
+    switch(msg_type_enum) {
+        case MessageType::START_COLLECTION:
+            this->ProcessStartCollection(msg_body);
+            break;
+        case MessageType::USB_LIST:
+            this->ProcessUSBList();
+            break;
+        default:
+            break;
+    }
 }

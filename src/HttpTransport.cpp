@@ -55,7 +55,7 @@ bool HttpTransport::UploadQueueItem(UploadItem item)
 {
     bool rgb_success = false;
     bool depth_success = false;
-    std::string uid = this->InitMetadata(item.qr_det.identifier, item.qr_det.event_time);
+    std::string uid = this->InitMetadata(item.uid, item.qr_det.identifier, item.qr_det.event_time);
     if(uid.empty())
         return false;
 
@@ -76,7 +76,7 @@ bool HttpTransport::UploadQueueItem(UploadItem item)
     return rgb_success;
 }
 
-std::string HttpTransport::InitMetadata(std::string identifier, uint64_t event_time)
+std::string HttpTransport::InitMetadata(std::string uid, std::string identifier, uint64_t event_time)
 {
     CURL *curl;
     CURLcode res;
@@ -93,6 +93,7 @@ std::string HttpTransport::InitMetadata(std::string identifier, uint64_t event_t
     json data_to_send;
     data_to_send["identifier"] = identifier.c_str();
     data_to_send["event_time"] = event_time;
+    data_to_send["uid"] = uid.c_str();
 
     struct curl_slist *headers = NULL;
     headers = curl_slist_append(headers, "Content-Type: application/json");

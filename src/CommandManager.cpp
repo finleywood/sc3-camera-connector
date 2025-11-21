@@ -17,14 +17,3 @@ void CommandManager::Register(std::string referrer_id, CommandReceiver* cr)
         this->Receivers.push_back(registered_item);
     }
 }
-
-void CommandManager::SubmitMessage(MessageType msg_type, std::string msg_content)
-{
-    for(auto& recv : this->Receivers) {
-        if(!recv.valid())
-            return;
-
-        if(recv.cr->AllowMessage(msg_type))
-            recv.cr->ProcessMessage(msg_type, msg_content);
-    }
-}

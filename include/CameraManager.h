@@ -7,8 +7,13 @@
 #include <atomic>
 #include <thread>
 #include <chrono>
+#include <mutex>
 #include "EncodedImage.h"
 #include "QRDetection.h"
+#include "CommandManager.h"
+#include "CommandReceiver.h"
+#include "Messages/BaseMessage.h"
+#include "Messages/StringMessage.h"
 
 enum class CameraState {
     UNINITIALIZED,
@@ -30,19 +35,26 @@ enum class CameraState {
 using det_callback_t = std::function<void(const QRDetection&)>;
 using state_callback_t = std::function<void(CameraState, CameraState)>;
 
-class CameraManager {
+class CameraManager : public CommandReceiver {
 public:
-    CameraManager(uint32_t camera_idx = 0, bool enable_depth = false)
-        : camera_idx(camera_idx)
+    CameraManager(uint32_t camera_idx = 0, bool enable_depth = false, bool enable_gui_preview = false)
+        : CommandReceiver()
+        , camera_idx(camera_idx)
         , enable_depth(enable_depth)
         , current_state(CameraState::UNINITIALIZED)
-    {}
+        , gui_enabled(enable_gui_preview)
+    {
+        CommandManager::GetCM().Register("CameraManager", this);
+    }
 
     ~CameraManager() {
         Stop();
     }
 
-    void RegisterDetectionCallback(det_callback_t callback_func);
+    // Command receiver methods
+    virtual bool AllowMessage(MessageType) override;
+    virtual void ProcessMessage(const BaseMessage&) override;
+
     void RegisterStateCallback(state_callback_t callback_func);
     
     bool Start(bool is_blocking = false);
@@ -54,6 +66,7 @@ public:
 private:
     // State machine
     std::atomic<CameraState> current_state;
+    std::atomic<bool> collection_active = { false };
     void TransitionTo(CameraState new_state);
     void RunStateMachine();
     
@@ -79,6 +92,9 @@ private:
     bool IsDeviceConnected();
     void CloseDevice();
     void CleanupResources();
+
+    // Process methods for command receiver
+    void ProcessCollectionStart(const StringMessage&);
     
     // Capture handling
     void HandleCapture(k4a_capture_t* cap);
@@ -101,16 +117,19 @@ private:
     static constexpr int MAX_RECONNECT_ATTEMPTS = 10;
     static constexpr int MAX_ENUM_ATTEMPTS = 20;
     static constexpr int RECONNECT_COOLDOWN_SEC = 5;
+    static constexpr int MAX_FRAMES_FOR_COLLECTION = 15;
     
-    // QR detection
-    det_callback_t detection_callback;
+    // callbacks
     state_callback_t state_callback;
-    QRDetection prev_detection;
-    bool cooldown_active = false;
-    int num_frames_since_last = 0;
-    int max_frames_since_last = 15;
     
     // Control
     std::atomic<bool> close_flag{false};
     std::thread state_machine_thread;
+    std::atomic<int> frames_since_event_started = { 0 };
+    std::string current_event_uid;
+
+    // GUI Stuff
+    bool gui_enabled = false;
+    std::mutex gui_mutex;
+    std::string gui_window_name = "Azure Kinect Debug Preview";
 };

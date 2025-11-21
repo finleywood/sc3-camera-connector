@@ -5,6 +5,7 @@
 #include <sstream>
 #include <iomanip>
 #include "ImageUtils.h"
+#include "Messages/EventMessage.h"
 
 // Define static constexpr members
 constexpr int CameraManager::MAX_TIMEOUTS;
@@ -12,34 +13,44 @@ constexpr int CameraManager::MAX_RECONNECT_ATTEMPTS;
 constexpr int CameraManager::MAX_ENUM_ATTEMPTS;
 constexpr int CameraManager::RECONNECT_COOLDOWN_SEC;
 
-std::string generate_uuid_v4() {
-    static std::random_device rd;
-    static std::mt19937 gen(rd());
-    static std::uniform_int_distribution<uint32_t> dis(0, 0xffffffff);
-
-    uint32_t data[4];
-    for (auto &d : data) {
-        d = dis(gen);
+bool CameraManager::AllowMessage(MessageType msg_type)
+{
+    LOG(INFO) << "Received request for allowing msg type " << message_type_enum_to_str(msg_type) << std::endl;
+    switch(msg_type) {
+        case MessageType::START_COLLECTION:
+            return true;
+            break;
+        default:
+            return false;
+            break;
     }
-
-    // Set version (4) and variant bits per RFC 4122
-    data[1] = (data[1] & 0xFFFF0FFF) | 0x00004000; // Version 4
-    data[2] = (data[2] & 0x3FFFFFFF) | 0x80000000; // Variant 10xxxxxx
-
-    std::ostringstream oss;
-    oss << std::hex << std::setfill('0')
-        << std::setw(8) << data[0] << '-'
-        << std::setw(4) << ((data[1] >> 16) & 0xFFFF) << '-'
-        << std::setw(4) << (data[1] & 0xFFFF) << '-'
-        << std::setw(4) << ((data[2] >> 16) & 0xFFFF) << '-'
-        << std::setw(4) << (data[2] & 0xFFFF)
-        << std::setw(8) << data[3];
-
-    return oss.str();
 }
 
-void CameraManager::RegisterDetectionCallback(det_callback_t callback_func) {
-    this->detection_callback = callback_func;
+void CameraManager::ProcessMessage(const BaseMessage& msg)
+{
+    LOG(INFO) << "Camera manager got message of type: " << message_type_enum_to_str(msg.MsgType).c_str() << "." << std::endl;
+    switch(msg.MsgType) {
+        case MessageType::START_COLLECTION:
+            this->ProcessCollectionStart(static_cast<const StringMessage&>(msg));
+            break;
+        default:
+            break;
+    }
+}
+
+void CameraManager::ProcessCollectionStart(const StringMessage& msg)
+{
+    if(this->collection_active.load()) {
+        // Collection already active, cannot start new one
+        StringMessage msg_out;
+        msg_out.MsgType = MessageType::COLLECTION_FAILURE;
+        msg_out.content = msg.content;
+        CommandManager::GetCM().SubmitMessage(msg_out);
+    } else {
+        this->collection_active = true;
+        this->current_event_uid = msg.content;
+        this->frames_since_event_started = 0;
+    }
 }
 
 void CameraManager::RegisterStateCallback(state_callback_t callback_func) {
@@ -186,6 +197,7 @@ void CameraManager::HandleStreaming() {
     
     if (result == K4A_WAIT_RESULT_SUCCEEDED) {
         consecutive_timeouts = 0;
+        LOG(DEBUG) << "Starting streaming." << std::endl;
         HandleCapture(&capture);
         if (capture != nullptr) {
             k4a_capture_release(capture);
@@ -322,6 +334,13 @@ bool CameraManager::OpenDevice() {
         LOG(ERROR) << "Failed to open device " << camera_idx << std::endl;
         return false;
     }
+
+    // GUI Init
+    if (gui_enabled) {
+        std::lock_guard<std::mutex> lock(gui_mutex);
+        cv::namedWindow(gui_window_name, cv::WINDOW_NORMAL);
+        cv::resizeWindow(gui_window_name, 960, 540);
+    }
     
     LOG(INFO) << "Device " << camera_idx << " opened successfully" << std::endl;
     return true;
@@ -369,10 +388,13 @@ void CameraManager::CloseDevice() {
 }
 
 void CameraManager::CleanupResources() {
+    // GUI cleanup
+    if (gui_enabled) {
+        std::lock_guard<std::mutex> lock(gui_mutex);
+        cv::destroyWindow(gui_window_name);
+    }
+
     CloseDevice();
-    prev_detection = QRDetection{};
-    cooldown_active = false;
-    num_frames_since_last = 0;
 }
 
 QRDetection CameraManager::LookForQR(k4a_image_t* img) {
@@ -380,23 +402,26 @@ QRDetection CameraManager::LookForQR(k4a_image_t* img) {
     
     cv::QRCodeDetector cv_qr;
     std::vector<cv::Point> qr_detections;
-    std::string found_data;
     try {
-        found_data = cv_qr.detectAndDecode(cv_mat_img, qr_detections);
+        std::string found_data = cv_qr.detectAndDecode(cv_mat_img, qr_detections);
+        if (!found_data.empty()) {
+            LOG(DEBUG) << "Detector detected and decoded a QR." << std::endl;
+            QRDetection found_qr;
+            found_qr.identifier = found_data;
+            return found_qr;
+        }
+        return {};
     } catch(std::exception& e) {
         LOG(WARNING) << "QR Code detection failed. Due to " << e.what() << std::endl;
+        return {};
     }
-    
-    if (!found_data.empty()) {
-        QRDetection found_qr;
-        found_qr.identifier = found_data;
-        found_qr.uid = generate_uuid_v4();
-    }
-    return {};
 }
 
 void CameraManager::HandleCapture(k4a_capture_t* cap) {
-    if (cap == nullptr || *cap == nullptr) return;
+    if (cap == nullptr || *cap == nullptr) {
+        LOG(DEBUG) << "Capture is null, cannot process." << std::endl;
+        return;
+    }
     
     k4a_image_t color_image = k4a_capture_get_color_image(*cap);
     k4a_image_t depth_image = nullptr;
@@ -406,61 +431,76 @@ void CameraManager::HandleCapture(k4a_capture_t* cap) {
     }
     
     if (color_image != nullptr) {
-        QRDetection found_qr;
-        
-        if (!cooldown_active) {
-            found_qr = this->LookForQR(&color_image);
+        // GUI Stuff
+        if (gui_enabled) {
+            cv::Mat cv_mat_img = ImageUtils::K4ARGBToCV(&color_image);
+            std::lock_guard<std::mutex> lock(gui_mutex);
+            cv::imshow(gui_window_name, cv_mat_img);
+            cv::waitKey(1); // non-blocking
         }
+
         
-        if (!found_qr.identifier.empty() && 
-            found_qr.identifier != prev_detection.identifier) {
-            
-            EncodedImage rgb_jpeg = ImageUtils::K4AToJpeg(&color_image);
-            if (!rgb_jpeg.valid()) {
-                LOG(ERROR) << "Failed to encode RGB image" << std::endl;
-                if (color_image != nullptr) k4a_image_release(color_image);
-                if (depth_image != nullptr) k4a_image_release(depth_image);
-                return;
-            }
-            
-            found_qr.rgb_img = std::move(rgb_jpeg);
-            
-            if (enable_depth && depth_image != nullptr) {
-                EncodedImage depth_png = ImageUtils::K4AToPng(&depth_image);
-                if (depth_png.valid()) {
-                    found_qr.depth_image = std::move(depth_png);
+        
+        if (this->collection_active.load()) {
+
+            // Look for QR
+            QRDetection found_qr = this->LookForQR(&color_image);
+
+            if(!found_qr.identifier.empty()) {
+                EncodedImage rgb_jpeg = ImageUtils::K4AToJpeg(&color_image);
+                if (!rgb_jpeg.valid()) {
+                    LOG(ERROR) << "Failed to encode RGB image" << std::endl;
+                    if (color_image != nullptr) k4a_image_release(color_image);
+                    if (depth_image != nullptr) k4a_image_release(depth_image);
+                    return;
+                }
+                
+                found_qr.rgb_img = std::move(rgb_jpeg);
+                
+                if (enable_depth && depth_image != nullptr) {
+                    EncodedImage depth_png = ImageUtils::K4AToPng(&depth_image);
+                    if (depth_png.valid()) {
+                        found_qr.depth_image = std::move(depth_png);
+                    }
+                }
+                
+                auto now = std::chrono::system_clock::now();
+                found_qr.event_time = std::chrono::duration_cast<std::chrono::seconds>(
+                    now.time_since_epoch()).count();
+                
+                this->frames_since_event_started = 0;
+                this->collection_active = false;
+
+                CommandManager& cm = CommandManager::GetCM();
+                // Construct event message to send
+                EventMessage ev_msg;
+                ev_msg.MsgType = MessageType::START_UPLOAD;
+                ev_msg.QrDetection = found_qr;
+                ev_msg.Uid = this->collection_active.load();
+                this->current_event_uid = "";
+                cm.SubmitMessage(ev_msg);
+
+                // Then let the ui know
+                StringMessage notify_msg;
+                notify_msg.MsgType = MessageType::COLLECTION_SUCCESS;
+                notify_msg.content = this->current_event_uid;
+                cm.SubmitMessage(notify_msg);
+
+            } else {
+                if(this->frames_since_event_started >= (MAX_FRAMES_FOR_COLLECTION - 1)) {
+                    this->collection_active = false;
+                    this->frames_since_event_started = 0;
+                    StringMessage msg;
+                    msg.MsgType = MessageType::COLLECTION_FAILURE;
+                    msg.content = this->current_event_uid;
+                    this->current_event_uid = "";
+                    CommandManager::GetCM().SubmitMessage(msg);
+                } else {
+                    this->frames_since_event_started = this->frames_since_event_started + 1;
                 }
             }
-            
-            auto now = std::chrono::system_clock::now();
-            found_qr.event_time = std::chrono::duration_cast<std::chrono::seconds>(
-                now.time_since_epoch()).count();
-            
-            if (detection_callback) {
-                detection_callback(found_qr);
-            }
         }
         
-        // Cooldown management
-        if ((prev_detection.identifier != found_qr.identifier) && !cooldown_active) {
-            cooldown_active = true;
-            num_frames_since_last = 0;
-            LOG(DEBUG) << "QR lost. Cooldown active for " 
-                      << max_frames_since_last << " frames" << std::endl;
-            prev_detection = QRDetection{};
-        }
-        
-        if (num_frames_since_last >= max_frames_since_last && cooldown_active) {
-            cooldown_active = false;
-            num_frames_since_last = 0;
-            LOG(DEBUG) << "Cooldown over" << std::endl;
-        }
-        
-        if (cooldown_active) {
-            num_frames_since_last++;
-        }
-        
-        prev_detection = found_qr;
     }
     
     if (color_image != nullptr) k4a_image_release(color_image);

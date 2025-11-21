@@ -10,26 +10,9 @@
 #include "Defaults.h"
 #include "ApplicationConfig.h"
 #include "UINotifier.h"
+#include "USBDownload.h"
 
-static UploadQueue* upload_queue;
-static UINotifier* ui_notifier;
 static json app_config;
-
-void detection_callback(const QRDetection& detection)
-{
-    LOG(INFO) << "QR DETECTION - " << "Found ID: " << detection.identifier.c_str() << std::endl;
-    if(upload_queue != nullptr) {
-        LOG(INFO) << "Attempting to upload detection." << std::endl;
-        try {
-            UploadItem item_to_upload = {};
-            item_to_upload.qr_det = detection;
-            upload_queue->Enqueue(item_to_upload);
-            LOG(INFO) << "Queuing success." << std::endl;
-        } catch(std::exception& e) {
-            LOG(WARNING) << "Unable to queue event for upload, because of: " << e.what() << std::endl;
-        }
-    }
-}
 
 struct Args {
     std::string config;
@@ -37,6 +20,7 @@ struct Args {
     bool has_config = false;
     bool has_verbosity = false;
     bool show_help = false;
+    bool show_gui = false;
 };
 
 Args parseArgs(int argc, char* argv[]) {
@@ -78,6 +62,8 @@ Args parseArgs(int argc, char* argv[]) {
             }
             
             i++;
+        } else if (arg == "-g" || arg == "--gui") {
+            args.show_gui = true;
         }
         else {
             throw std::runtime_error("Unknown option: " + arg);
@@ -124,21 +110,22 @@ int main(int argc, char** argv)
 
     std::string server_url = app_config["server_url"];
     // Start upload queue
-    upload_queue = new UploadQueue(new HttpTransport(server_url), 3);
-    upload_queue->Start();
+    UploadQueue upload_queue(new HttpTransport(server_url), 3);
+    upload_queue.Start();
 
     std::string socket_path = app_config["ui_socket_path"];
-    ui_notifier = new UINotifier(socket_path);
-    ui_notifier->Start();
+    UINotifier ui_notifier(socket_path);
+    ui_notifier.Start();
 
-    CameraManager camera_manager(0, true);
-    camera_manager.RegisterDetectionCallback(detection_callback);
+    USBDownload usb_download;
+
+    CameraManager camera_manager(0, true, args.show_gui);
     bool status = camera_manager.Start(true);
 
     camera_manager.Stop();
     // Stop upload queue & ui notifier if camera manager stops
-    ui_notifier->Stop();
-    upload_queue->Stop();
+    ui_notifier.Stop();
+    upload_queue.Stop();
     return status ? 0 : -1;
 }
 
