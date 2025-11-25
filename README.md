@@ -5,11 +5,16 @@
 Need installed the following:
 
 `libk4a1.4`
-`libk4a1.4-dev`
+`libk4a1.4-dev` (Not for prod)
 
 (both of which can be gotten from the microsoft repos, which is provided in the .deb package in scripts/ or can build and use the docker image for all deps).
 
 `libopencv-dev`
+( Probably install only what is linked in prod, i.e. libopencv4-xxxxx )
+
+`libcurl4-openssl-dev` (libcurl4t64 for prod)
+
+`libudev-dev`(libudev1 for prod)
 
 Also build tools such as 
 `make`
