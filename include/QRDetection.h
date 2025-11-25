@@ -1,7 +1,12 @@
-#include <opencv2/opencv.hpp>
+#pragma once
+
+#include <string>
+#include <cstdint>
+#include "EncodedImage.h"
 
 struct QRDetection {
     std::string identifier;
-    uint8_t* rgb_image_buf;
-    uint8_t* depth_image_buf;
+    EncodedImage rgb_img;
+    EncodedImage depth_image;
+    uint64_t event_time;
 };

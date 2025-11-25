@@ -1,7 +1,25 @@
 set(HEADERS 
     ${HEADERS}
     ${CMAKE_CURRENT_SOURCE_DIR}/aixlog/aixlog.hpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/json/json.hpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/json/json_fwd.hpp
     ${CMAKE_CURRENT_SOURCE_DIR}/CameraManager.h
     ${CMAKE_CURRENT_SOURCE_DIR}/QRDetection.h
+    ${CMAKE_CURRENT_SOURCE_DIR}/HttpTransport.h
+    ${CMAKE_CURRENT_SOURCE_DIR}/UploadItem.h
+    ${CMAKE_CURRENT_SOURCE_DIR}/UploadQueue.h
+    ${CMAKE_CURRENT_SOURCE_DIR}/UpstreamTransport.h
+    ${CMAKE_CURRENT_SOURCE_DIR}/ApplicationConfig.h
+    ${CMAKE_CURRENT_SOURCE_DIR}/EncodedImage.h
+    ${CMAKE_CURRENT_SOURCE_DIR}/ImageUtils.h
+    ${CMAKE_CURRENT_SOURCE_DIR}/UINotifier.h
+    ${CMAKE_CURRENT_SOURCE_DIR}/MessageTypes.h
+    ${CMAKE_CURRENT_SOURCE_DIR}/Messages/BaseMessage.h
+    ${CMAKE_CURRENT_SOURCE_DIR}/Messages/StringMessage.h
+    ${CMAKE_CURRENT_SOURCE_DIR}/Messages/EventMessage.h
+    ${CMAKE_CURRENT_SOURCE_DIR}/CommandManager.h
+    ${CMAKE_CURRENT_SOURCE_DIR}/CommandReceiver.h
+    ${CMAKE_CURRENT_SOURCE_DIR}/USBDeviceManager.h
+    ${CMAKE_CURRENT_SOURCE_DIR}/USBDownload.h
     PARENT_SCOPE
 )

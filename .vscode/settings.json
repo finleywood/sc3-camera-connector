@@ -55,6 +55,22 @@
         "stop_token": "cpp",
         "streambuf": "cpp",
         "thread": "cpp",
-        "typeinfo": "cpp"
+        "typeinfo": "cpp",
+        "complex": "cpp",
+        "list": "cpp",
+        "set": "cpp",
+        "iomanip": "cpp",
+        "any": "cpp",
+        "codecvt": "cpp",
+        "forward_list": "cpp",
+        "optional": "cpp",
+        "ranges": "cpp",
+        "span": "cpp",
+        "valarray": "cpp",
+        "charconv": "cpp",
+        "format": "cpp",
+        "text_encoding": "cpp",
+        "variant": "cpp",
+        "hash_map": "cpp"
     }
 }
