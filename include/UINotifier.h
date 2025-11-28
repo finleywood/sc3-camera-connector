@@ -53,6 +53,8 @@ private:
     // Socket handlers IN
     void ProcessStartCollection(std::string);
     void ProcessUSBList();
+    void ProcessCollectionManualInput(std::string);
+    void ProcessCollectionReject(std::string);
 
     // Command manager handlers OUT
     void ProcessSendStringMessage(const StringMessage&);

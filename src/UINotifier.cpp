@@ -3,6 +3,7 @@
 #include <aixlog/aixlog.hpp>
 #include <chrono>
 #include <sys/socket.h>
+#include <arpa/inet.h>
 #include <sys/un.h>
 #include <iostream>
 #include <cstring>
@@ -25,6 +26,7 @@ bool UINotifier::AllowMessage(MessageType msg_type)
         case MessageType::UPLOAD_SUCESS:
         case MessageType::UPLOAD_FAILURE:
         case MessageType::USB_DEV:
+        case MessageType::COLLECTION_THUMNAIL:
             return true;
             break;
         default:
@@ -42,6 +44,7 @@ void UINotifier::ProcessMessage(const BaseMessage& msg)
         case MessageType::UPLOAD_SUCESS:
         case MessageType::UPLOAD_FAILURE:
         case MessageType::USB_DEV:
+        case MessageType::COLLECTION_THUMNAIL:
             this->ProcessSendStringMessage(static_cast<const StringMessage&>(msg));
             return;
         default:
@@ -118,7 +121,7 @@ void UINotifier::RunSocketStateMachine()
                 HandleClosing();
                 break;
         }
-        std::this_thread::sleep_for(std::chrono::milliseconds(10));
+        std::this_thread::sleep_for(std::chrono::milliseconds(1000));
     }
 
     if(this->current_status != SocketStatus::UINITIALIZED) {
@@ -296,6 +299,11 @@ bool UINotifier::SendMessage(std::string msg)
         return false;
     }
 
+    // Write 4 byte length followed by actual message
+    uint32_t length = msg.size();
+    // Ensure big-endian
+    uint32_t big_end_len = htonl(length);
+    write(this->client_fd, &big_end_len, sizeof(big_end_len));
     write(this->client_fd, msg.c_str(), msg.size());
     return true;
 }
@@ -315,6 +323,22 @@ void UINotifier::ProcessUSBList()
     CommandManager::GetCM().SubmitMessage(usb_list_msg);
 }
 
+void UINotifier::ProcessCollectionManualInput(std::string input)
+{
+    StringMessage man_input_msg;
+    man_input_msg.MsgType = MessageType::COLLECTION_MANUAL_INPUT;
+    man_input_msg.content = input;
+    CommandManager::GetCM().SubmitMessage(man_input_msg);
+}
+
+void UINotifier::ProcessCollectionReject(std::string uid)
+{
+    StringMessage col_reject_msg;
+    col_reject_msg.MsgType = MessageType::COLLECTION_REJECT;
+    col_reject_msg.content = uid;
+    CommandManager::GetCM().SubmitMessage(col_reject_msg);
+}
+
 void UINotifier::ProcessClientMessage(std::string msg)
 {
     std::istringstream iss(msg);
@@ -324,7 +348,7 @@ void UINotifier::ProcessClientMessage(std::string msg)
         parts.push_back(word);
     }
 
-    if(parts.size() > 2) {
+    if(parts.size() > 2 || parts.size() == 0) {
         LOG(WARNING) << "Invalid formatting on message received: " << msg.c_str() << std::endl;
         return;
     }
@@ -345,6 +369,12 @@ void UINotifier::ProcessClientMessage(std::string msg)
             break;
         case MessageType::USB_LIST:
             this->ProcessUSBList();
+            break;
+        case MessageType::COLLECTION_MANUAL_INPUT:
+            this->ProcessCollectionManualInput(msg_body);
+            break;
+        case MessageType::COLLECTION_REJECT:
+            this->ProcessCollectionReject(msg_body);
             break;
         default:
             break;

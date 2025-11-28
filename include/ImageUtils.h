@@ -11,5 +11,6 @@ namespace ImageUtils {
 cv::Mat K4ARGBToCV(k4a_image_t* img);
 EncodedImage K4AToJpeg(k4a_image_t* image, int quality = 90);
 EncodedImage K4AToPng(k4a_image_t* image);
+EncodedImage RawToThumnail(k4a_image_t* image, int target_width = 640, int out_quality = 90);
 
 }
