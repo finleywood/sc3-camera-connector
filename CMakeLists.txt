@@ -2,6 +2,8 @@ cmake_minimum_required(VERSION 3.5.0)
 
 project(SC3-Camera-Connector VERSION 1.0 LANGUAGES CXX)
 
+set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
+
 # Require C++11
 set(CMAKE_CXX_STANDARD 11)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)

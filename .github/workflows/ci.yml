@@ -1,0 +1,16 @@
+name: CI
+on: [push, pull_request]
+
+jobs:
+  build-debian-13:
+    runs-on: self-hosted
+    container:
+      image: ghcr.io/finleywood/sc3-camera-connector/builder:latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: build
+        run: |
+          mkdir build
+          cd build
+          cmake ..
+          make -j$(nproc)

@@ -1,3 +1,5 @@
+[![CI](https://github.com/finleywood/sc3-camera-connector/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/finleywood/sc3-camera-connector/actions/workflows/ci.yml)
+
 # SC3 Camera Connector
 
 # Requirements

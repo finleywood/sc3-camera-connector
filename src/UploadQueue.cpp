@@ -121,12 +121,11 @@ void UploadQueue::MainLoop()
         upload_start_message.content = item.uid;
         cm.SubmitMessage(upload_start_message);
 
-        bool upload_sucess = false;
+        bool upload_success = false;
         while (true) {
             item.retry_num = item.retry_num + 1;
             LOG(INFO) << "Starting upload attempt " << static_cast<int>(item.retry_num) << " out of " << static_cast<int>(this->max_retry) << "." << std::endl;
-            bool upload_success = this->transport_ptr->UploadQueueItem(item);
-            if(upload_success) {
+            if(this->transport_ptr->UploadQueueItem(item)) {
                 LOG(INFO) << "Upload success." << std::endl;
                 upload_success = true;
                 break;
@@ -141,7 +140,7 @@ void UploadQueue::MainLoop()
 
         StringMessage upload_status_msg;
         upload_status_msg.content = item.uid;
-        upload_status_msg.MsgType = upload_sucess ? MessageType::UPLOAD_SUCESS : MessageType::UPLOAD_FAILURE;
+        upload_status_msg.MsgType = upload_success ? MessageType::UPLOAD_SUCESS : MessageType::UPLOAD_FAILURE;
         cm.SubmitMessage(upload_status_msg);
 
         // LOG(INFO) << "Falling back to USB." << std::endl;

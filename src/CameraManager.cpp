@@ -6,6 +6,7 @@
 #include <iomanip>
 #include "ImageUtils.h"
 #include "Messages/EventMessage.h"
+#include "Base64.h"
 
 // Define static constexpr members
 constexpr int CameraManager::MAX_TIMEOUTS;
@@ -15,9 +16,10 @@ constexpr int CameraManager::RECONNECT_COOLDOWN_SEC;
 
 bool CameraManager::AllowMessage(MessageType msg_type)
 {
-    LOG(INFO) << "Received request for allowing msg type " << message_type_enum_to_str(msg_type) << std::endl;
     switch(msg_type) {
         case MessageType::START_COLLECTION:
+        case MessageType::COLLECTION_MANUAL_INPUT:
+        case MessageType::COLLECTION_REJECT:
             return true;
             break;
         default:
@@ -28,7 +30,6 @@ bool CameraManager::AllowMessage(MessageType msg_type)
 
 void CameraManager::ProcessMessage(const BaseMessage& msg)
 {
-    LOG(INFO) << "Camera manager got message of type: " << message_type_enum_to_str(msg.MsgType).c_str() << "." << std::endl;
     switch(msg.MsgType) {
         case MessageType::START_COLLECTION:
             this->ProcessCollectionStart(static_cast<const StringMessage&>(msg));
@@ -40,15 +41,14 @@ void CameraManager::ProcessMessage(const BaseMessage& msg)
 
 void CameraManager::ProcessCollectionStart(const StringMessage& msg)
 {
-    if(this->collection_active.load()) {
+    if(this->event_state.valid()) {
         // Collection already active, cannot start new one
         StringMessage msg_out;
         msg_out.MsgType = MessageType::COLLECTION_FAILURE;
         msg_out.content = msg.content;
         CommandManager::GetCM().SubmitMessage(msg_out);
     } else {
-        this->collection_active = true;
-        this->current_event_uid = msg.content;
+        this->event_state.uid = msg.content;
         this->frames_since_event_started = 0;
     }
 }
@@ -98,7 +98,7 @@ void CameraManager::TransitionTo(CameraState new_state) {
 }
 
 void CameraManager::RunStateMachine() {
-    TransitionTo(CameraState::INITIALIZING);
+    TransitionTo(CameraState::WAITING_FOR_COLLECTION);
     
     while (!close_flag) {
         CameraState state = current_state.load();
@@ -106,6 +106,12 @@ void CameraManager::RunStateMachine() {
         switch (state) {
             case CameraState::UNINITIALIZED:
                 HandleUninitialized();
+                break;
+            case CameraState::WAITING_FOR_COLLECTION:
+                HandleWaitingForCollection();
+                break;
+            case CameraState::COLLECTION_FINISHED:
+                HandleCollectionFinished();
                 break;
             case CameraState::INITIALIZING:
                 HandleInitializing();
@@ -149,7 +155,9 @@ void CameraManager::RunStateMachine() {
         }
         
         // Small sleep to prevent busy loop
-        std::this_thread::sleep_for(std::chrono::milliseconds(10));
+        int sleep_time = this->event_state.valid() ? 10 : 1000;
+        std::this_thread::sleep_for(std::chrono::milliseconds(sleep_time));
+            
     }
     
     // Clean shutdown requested
@@ -164,6 +172,22 @@ void CameraManager::HandleUninitialized() {
     std::this_thread::sleep_for(std::chrono::milliseconds(100));
 }
 
+void CameraManager::HandleWaitingForCollection()
+{
+    if(this->event_state.valid()) {
+        LOG(INFO) << "Collection period started, will open device and start streaming." << std::endl;
+        this->TransitionTo(CameraState::INITIALIZING);
+    }
+}
+
+void CameraManager::HandleCollectionFinished()
+{
+    LOG(INFO) << "Collection period finished, closing device." << std::endl;
+    this->ResetEventState();
+    this->CleanupResources();
+    this->TransitionTo(CameraState::WAITING_FOR_COLLECTION);
+}
+
 void CameraManager::HandleInitializing() {
     LOG(INFO) << "Initializing device..." << std::endl;
     
@@ -171,7 +195,7 @@ void CameraManager::HandleInitializing() {
         TransitionTo(CameraState::DEVICE_OPEN);
     } else {
         LOG(ERROR) << "Failed to open device" << std::endl;
-        TransitionTo(CameraState::ERROR);
+        TransitionTo(CameraState::RECONNECTING);
     }
 }
 
@@ -186,14 +210,18 @@ void CameraManager::HandleStartingCameras() {
         TransitionTo(CameraState::STREAMING);
     } else {
         LOG(ERROR) << "Failed to start cameras" << std::endl;
-        TransitionTo(CameraState::ERROR);
+        TransitionTo(CameraState::RECONNECTING);
     }
 }
 
 void CameraManager::HandleStreaming() {
     k4a_capture_t capture = nullptr;
-    k4a_wait_result_t result = k4a_device_get_capture(
-        current_device, &capture, 1000);
+    k4a_wait_result_t result = k4a_device_get_capture(current_device, &capture, 1000);
+    if(!this->event_state.valid()) {
+        if(capture)
+            k4a_capture_release(capture);
+        return;
+    }
     
     if (result == K4A_WAIT_RESULT_SUCCEEDED) {
         consecutive_timeouts = 0;
@@ -267,6 +295,7 @@ void CameraManager::HandleWaitingForDevice() {
         } else {
             reconnect_attempts++;
             if (reconnect_attempts >= MAX_RECONNECT_ATTEMPTS) {
+                reconnect_attempts = 0;
                 TransitionTo(CameraState::RECONNECT_FAILED);
             }
         }
@@ -284,16 +313,14 @@ void CameraManager::HandleReconnectFailed() {
     LOG(WARNING) << "Reconnection failed after " << reconnect_attempts 
               << " attempts" << std::endl;
     
-    last_reconnect_fail_time = std::chrono::steady_clock::now();
-    
-    // Wait cooldown period
-    std::this_thread::sleep_for(std::chrono::seconds(RECONNECT_COOLDOWN_SEC));
-    
-    // Reset and try again
-    reconnect_attempts = 0;
-    device_enum_attempts = 0;
-    LOG(INFO) << "Retrying after cooldown..." << std::endl;
-    TransitionTo(CameraState::WAITING_FOR_DEVICE);
+    // if collection started, end it
+    if(this->event_state.valid()) {
+        StringMessage msg;
+        msg.MsgType = MessageType::COLLECTION_FAILURE;
+        msg.content = this->event_state.uid;
+        CommandManager::GetCM().SubmitMessage(msg);
+    }
+    this->TransitionTo(CameraState::COLLECTION_FINISHED);
 }
 
 void CameraManager::HandleError() {
@@ -382,8 +409,12 @@ void CameraManager::CloseDevice() {
     }
     
     LOG(INFO) << "Closing device..." << std::endl;
-    k4a_device_stop_cameras(current_device);
-    k4a_device_close(current_device);
+    try {
+        k4a_device_stop_cameras(current_device);
+        k4a_device_close(current_device);
+    } catch(std::exception& e) {
+        LOG(WARNING) << "Closing cameras failed due to: " << e.what() << std::endl;
+    }
     current_device = nullptr;
 }
 
@@ -395,6 +426,12 @@ void CameraManager::CleanupResources() {
     }
 
     CloseDevice();
+}
+
+void CameraManager::ResetEventState()
+{
+    this->event_state = {};
+    this->frames_since_event_started = 0;
 }
 
 QRDetection CameraManager::LookForQR(k4a_image_t* img) {
@@ -438,66 +475,73 @@ void CameraManager::HandleCapture(k4a_capture_t* cap) {
             cv::imshow(gui_window_name, cv_mat_img);
             cv::waitKey(1); // non-blocking
         }
+        // Look for QR
+        QRDetection found_qr = this->LookForQR(&color_image);
 
-        
-        
-        if (this->collection_active.load()) {
+        if(!found_qr.identifier.empty()) {
+            EncodedImage rgb_jpeg = ImageUtils::K4AToJpeg(&color_image);
+            if (!rgb_jpeg.valid()) {
+                LOG(ERROR) << "Failed to encode RGB image" << std::endl;
+                if (color_image != nullptr) k4a_image_release(color_image);
+                if (depth_image != nullptr) k4a_image_release(depth_image);
+                return;
+            }
+            
+            found_qr.rgb_img = std::move(rgb_jpeg);
 
-            // Look for QR
-            QRDetection found_qr = this->LookForQR(&color_image);
-
-            if(!found_qr.identifier.empty()) {
-                EncodedImage rgb_jpeg = ImageUtils::K4AToJpeg(&color_image);
-                if (!rgb_jpeg.valid()) {
-                    LOG(ERROR) << "Failed to encode RGB image" << std::endl;
-                    if (color_image != nullptr) k4a_image_release(color_image);
-                    if (depth_image != nullptr) k4a_image_release(depth_image);
-                    return;
-                }
-                
-                found_qr.rgb_img = std::move(rgb_jpeg);
-                
-                if (enable_depth && depth_image != nullptr) {
-                    EncodedImage depth_png = ImageUtils::K4AToPng(&depth_image);
-                    if (depth_png.valid()) {
-                        found_qr.depth_image = std::move(depth_png);
-                    }
-                }
-                
-                auto now = std::chrono::system_clock::now();
-                found_qr.event_time = std::chrono::duration_cast<std::chrono::seconds>(
-                    now.time_since_epoch()).count();
-                
-                this->frames_since_event_started = 0;
-                this->collection_active = false;
-
-                CommandManager& cm = CommandManager::GetCM();
-                // Construct event message to send
-                EventMessage ev_msg;
-                ev_msg.MsgType = MessageType::START_UPLOAD;
-                ev_msg.QrDetection = found_qr;
-                ev_msg.Uid = this->collection_active.load();
-                this->current_event_uid = "";
-                cm.SubmitMessage(ev_msg);
-
-                // Then let the ui know
-                StringMessage notify_msg;
-                notify_msg.MsgType = MessageType::COLLECTION_SUCCESS;
-                notify_msg.content = this->current_event_uid;
-                cm.SubmitMessage(notify_msg);
-
+            EncodedImage jpeg_thumnail = ImageUtils::RawToThumnail(&color_image, 640);
+            if(!jpeg_thumnail.valid()) {
+                LOG(WARNING) << "Unable to get image thumnail." << std::endl;
             } else {
-                if(this->frames_since_event_started >= (MAX_FRAMES_FOR_COLLECTION - 1)) {
-                    this->collection_active = false;
-                    this->frames_since_event_started = 0;
-                    StringMessage msg;
-                    msg.MsgType = MessageType::COLLECTION_FAILURE;
-                    msg.content = this->current_event_uid;
-                    this->current_event_uid = "";
-                    CommandManager::GetCM().SubmitMessage(msg);
+                std::string b64_thumnail = base64_encode(jpeg_thumnail.data.get(), jpeg_thumnail.size);
+                if(!b64_thumnail.empty()) {
+                    StringMessage thumnail_msg;
+                    thumnail_msg.MsgType = MessageType::COLLECTION_THUMNAIL;
+                    thumnail_msg.content = b64_thumnail;
+                    CommandManager& cm = CommandManager::GetCM();
+                    cm.SubmitMessage(thumnail_msg);
                 } else {
-                    this->frames_since_event_started = this->frames_since_event_started + 1;
+                    LOG(WARNING) << "Cannot send thumnail, unable to b64 encode byte array." << std::endl;
                 }
+            }
+            
+            if (enable_depth && depth_image != nullptr) {
+                EncodedImage depth_png = ImageUtils::K4AToPng(&depth_image);
+                if (depth_png.valid()) {
+                    found_qr.depth_image = std::move(depth_png);
+                }
+            }
+            
+            auto now = std::chrono::system_clock::now();
+            found_qr.event_time = std::chrono::duration_cast<std::chrono::seconds>(
+                now.time_since_epoch()).count();
+            
+            CommandManager& cm = CommandManager::GetCM();
+            // Construct event message to send
+            EventMessage ev_msg;
+            ev_msg.MsgType = MessageType::START_UPLOAD;
+            ev_msg.QrDetection = found_qr;
+            ev_msg.Uid = this->event_state.uid;
+            cm.SubmitMessage(ev_msg);
+
+            // Then let the ui know
+            StringMessage notify_msg;
+            notify_msg.MsgType = MessageType::COLLECTION_SUCCESS;
+            notify_msg.content = this->event_state.uid;
+            cm.SubmitMessage(notify_msg);
+
+            this->TransitionTo(CameraState::COLLECTION_FINISHED);
+
+        } else {
+            if(this->frames_since_event_started >= (MAX_FRAMES_FOR_COLLECTION - 1)) {
+                StringMessage msg;
+                msg.MsgType = MessageType::COLLECTION_FAILURE;
+                msg.content = this->event_state.uid;
+                CommandManager::GetCM().SubmitMessage(msg);
+
+                this->TransitionTo(CameraState::COLLECTION_FINISHED);
+            } else {
+                this->frames_since_event_started = this->frames_since_event_started + 1;
             }
         }
         

@@ -17,6 +17,8 @@
 
 enum class CameraState {
     UNINITIALIZED,
+    WAITING_FOR_COLLECTION,
+    COLLECTION_FINISHED,
     INITIALIZING,
     DEVICE_OPEN,
     STARTING_CAMERAS,
@@ -30,6 +32,13 @@ enum class CameraState {
     ERROR,
     STOPPING,
     STOPPED
+};
+
+struct CollectionEventState {
+    std::string uid;
+    QRDetection detection_event;
+    bool collection_period_done = false;
+    bool valid() { return !uid.empty(); };
 };
 
 using det_callback_t = std::function<void(const QRDetection&)>;
@@ -66,12 +75,13 @@ public:
 private:
     // State machine
     std::atomic<CameraState> current_state;
-    std::atomic<bool> collection_active = { false };
     void TransitionTo(CameraState new_state);
     void RunStateMachine();
     
     // State handlers
     void HandleUninitialized();
+    void HandleWaitingForCollection();
+    void HandleCollectionFinished();
     void HandleInitializing();
     void HandleDeviceOpen();
     void HandleStartingCameras();
@@ -92,6 +102,7 @@ private:
     bool IsDeviceConnected();
     void CloseDevice();
     void CleanupResources();
+    void ResetEventState();
 
     // Process methods for command receiver
     void ProcessCollectionStart(const StringMessage&);
@@ -99,6 +110,9 @@ private:
     // Capture handling
     void HandleCapture(k4a_capture_t* cap);
     QRDetection LookForQR(k4a_image_t* img);
+
+    // Event state
+    CollectionEventState event_state;
     
     // Configuration
     uint32_t camera_idx;
@@ -126,7 +140,6 @@ private:
     std::atomic<bool> close_flag{false};
     std::thread state_machine_thread;
     std::atomic<int> frames_since_event_started = { 0 };
-    std::string current_event_uid;
 
     // GUI Stuff
     bool gui_enabled = false;
