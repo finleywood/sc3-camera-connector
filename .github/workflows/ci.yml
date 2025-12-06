@@ -5,7 +5,7 @@ jobs:
   build-debian-13:
     runs-on: self-hosted
     container:
-      image: debian:13
+      image: ghcr.io/finleywood/sc3-cmake-builder:latest
     steps:
       - uses: actions/checkout@v4
       - name: build
