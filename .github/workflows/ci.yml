@@ -7,15 +7,22 @@ jobs:
     container:
       image: ghcr.io/finleywood/sc3-camera-connector/builder:latest
     steps:
-      - uses: actions/checkout@v4
+      - name: checkout-repo
+        uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+      - name: Mark repo as safe
+        run: git config --global --add safe.directory "$GITHUB_WORKSPACE"
       - name: build
         run: |
+          bash scripts/gitver.sh
           mkdir build
           cd build
           cmake ..
           make -j$(nproc)
           make package
-
-      - uses: actions/upload-artifact@v4
-			- name: store-artifacts
-			  path: build/*.deb
+      - name: store-artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: deb-package
+          path: build/*.deb
