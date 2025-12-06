@@ -2,14 +2,13 @@ name: CI
 on: [push, pull_request]
 
 jobs:
-	build-debian-13:
-		runs-on: debian-13
-		steps:
-			- uses: actions/checkout@v1
-			- name: build
-				run: |
-					mkdir build
-					cd build
-					cmake ..
-					make -j$(nproc)
-					
+  build-debian-13:
+    runs-on: debian-13
+    steps:
+      - uses: actions/checkout@v1
+      - name: build
+        run: |
+          mkdir build
+          cd build
+          cmake ..
+          make -j$(nproc)
