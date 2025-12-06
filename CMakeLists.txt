@@ -51,6 +51,10 @@ set(CPACK_DEBIAN_PACKAGE_VERSION ${VERSION_FROM_SCRIPT})
 set(CPACK_PACKAGE_CONTACT "Finley Wood <fjw1g21@soton.ac.uk>")
 set(CPACK_PACKAGE_DESCRIPTION "Camera and processing backend for SC3")
 
+set(CPACK_DEBIAN_PACKAGE_CONTROL_EXTRA
+    "${CMAKE_SOURCE_DIR}/debian/postinst"
+)
+
 set(CPACK_DEBIAN_PACKAGE_DEPENDS "libk4a (>=1.4) libcurl4t64 (>= 8) libudev1 (>= 250) libopencv-core410 (>= 4.10) libopencv-highgui410 (>= 4.10) libopencv-imgcodecs410 (>= 4.10) libopencv-objdetect410 (>= 4.10) libopencv-imgproc410 (>= 4.10)")
 
 # Optional: architecture override (auto-detects otherwise)

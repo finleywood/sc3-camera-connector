@@ -7,6 +7,8 @@ Restart=always
 RestartSec=3
 User=sc3
 Group=sc3
+RuntimeDirectory=sc3
+RuntimeDirectoryMode=0755
 ExecStart=/usr/bin/SC3-Camera-Connector -c /etc/sc3/config.json
 
 [Install]
