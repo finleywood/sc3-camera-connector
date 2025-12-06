@@ -1,0 +1,4 @@
+{
+	"server_url": "http://127.0.0.1:8080",
+	"ui_socket_path": "/run/sc3/ui.socket"
+}

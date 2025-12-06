@@ -1,0 +1,13 @@
+[Unit]
+Description=SC3 Camera Connector
+
+[Service]
+Type=simple
+Restart=always
+RestartSec=3
+User=sc3
+Group=sc3
+ExecStart=/usr/bin/SC3-Camera-Connector -c /etc/sc3/config.json
+
+[Install]
+WantedBy=multi-user.target

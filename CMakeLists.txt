@@ -22,3 +22,38 @@ add_executable(${PROJECT_NAME} ${SOURCES} ${HEADERS})
 target_link_libraries(${PROJECT_NAME} PRIVATE k4a::k4a ${OpenCV_LIBS} CURL::libcurl ${UDEV_LIBRARIES})
 
 target_include_directories(${PROJECT_NAME} PRIVATE include)
+
+install(TARGETS ${PROJECT_NAME}
+    RUNTIME DESTINATION bin
+)
+
+install(FILES ./auxiliary/config.json
+		DESTINATION /etc/sc3
+)
+
+install(FILES ./auxiliary/sc3-camera-connector.service
+		DESTINATION /lib/systemd/system
+)
+
+set(CPACK_GENERATOR "DEB")
+
+execute_process(
+    COMMAND bash ${CMAKE_SOURCE_DIR}/scripts/gitver.sh
+		OUTPUT_STRIP_TRAILING_WHITESPACE
+    OUTPUT_VARIABLE VERSION_FROM_SCRIPT
+)
+
+message(STATUS "FOUND VERSION AS ${VERSION_FROM_SCRIPT}")
+
+set(CPACK_PACKAGE_NAME "sc3-camera-connector")
+set(CPACK_PACKAGE_VERSION ${VERSION_FROM_SCRIPT})
+set(CPACK_DEBIAN_PACKAGE_VERSION ${VERSION_FROM_SCRIPT})
+set(CPACK_PACKAGE_CONTACT "Finley Wood <fjw1g21@soton.ac.uk>")
+set(CPACK_PACKAGE_DESCRIPTION "Camera and processing backend for SC3")
+
+set(CPACK_DEBIAN_PACKAGE_DEPENDS "libk4a (>=1.4) libcurl4t64 (>= 8) libudev1 (>= 250) libopencv-core410 (>= 4.10) libopencv-highgui410 (>= 4.10) libopencv-imgcodecs410 (>= 4.10) libopencv-objdetect410 (>= 4.10) libopencv-imgproc410 (>= 4.10)")
+
+# Optional: architecture override (auto-detects otherwise)
+# set(CPACK_DEBIAN_PACKAGE_ARCHITECTURE "amd64")
+
+include(CPack)
