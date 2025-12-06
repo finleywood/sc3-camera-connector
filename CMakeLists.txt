@@ -55,7 +55,7 @@ set(CPACK_DEBIAN_PACKAGE_CONTROL_EXTRA
     "${CMAKE_SOURCE_DIR}/debian/postinst"
 )
 
-set(CPACK_DEBIAN_PACKAGE_DEPENDS "libk4a (>=1.4) libcurl4t64 (>= 8) libudev1 (>= 250) libopencv-core410 (>= 4.10) libopencv-highgui410 (>= 4.10) libopencv-imgcodecs410 (>= 4.10) libopencv-objdetect410 (>= 4.10) libopencv-imgproc410 (>= 4.10)")
+set(CPACK_DEBIAN_PACKAGE_DEPENDS "libk4a1.4 (>=1.4), libcurl4t64 (>= 8), libudev1 (>= 250), libopencv-core410 (>= 4.10), libopencv-highgui410 (>= 4.10), libopencv-imgcodecs410 (>= 4.10), libopencv-objdetect410 (>= 4.10), libopencv-imgproc410 (>= 4.10)")
 
 # Optional: architecture override (auto-detects otherwise)
 # set(CPACK_DEBIAN_PACKAGE_ARCHITECTURE "amd64")
