@@ -12,7 +12,7 @@ jobs:
       - name: Mark repo as safe
         run: git config --global --add safe.directory "$GITHUB_WORKSPACE"
       - name: Get tags
-        run: git fetch --tags origin
+        run: git fetch origin 'refs/tags/*:refs/tags/*'
       - name: build
         run: |
           bash scripts/gitver.sh
