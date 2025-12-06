@@ -536,7 +536,7 @@ void CameraManager::HandleCapture(k4a_capture_t* cap) {
             if(this->frames_since_event_started >= (MAX_FRAMES_FOR_COLLECTION - 1)) {
                 StringMessage msg;
                 msg.MsgType = MessageType::COLLECTION_FAILURE;
-                msg.content = this->current_event_uid;
+                msg.content = this->event_state.uid;
                 CommandManager::GetCM().SubmitMessage(msg);
 
                 this->TransitionTo(CameraState::COLLECTION_FINISHED);
