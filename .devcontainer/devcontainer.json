@@ -1,0 +1,22 @@
+{
+  "name": "SC3 Dev Container",
+  "image": "trixie_amd64_builder",
+  "runArgs": ["--user", "root"],
+  "remoteUser": "root",
+  "updateRemoteUserUID": false,
+
+  "customizations": {
+    "vscode": {
+      "settings": {
+        "terminal.integrated.defaultProfile.linux": "bash"
+      },
+      "extensions": [
+        "ms-vscode.cpptools",
+        "ms-vscode.cmake-tools"
+      ]
+    }
+  },
+
+  "workspaceFolder": "/workspace",
+  "workspaceMount": "source=${localWorkspaceFolder},target=/workspace,type=bind"
+}
