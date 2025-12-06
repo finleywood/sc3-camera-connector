@@ -9,7 +9,6 @@ jobs:
     steps:
       - name: checkout
       - uses: actions/checkout@v4
-
       - name: build
         run: |
           mkdir build
@@ -17,7 +16,6 @@ jobs:
           cmake ..
           make -j$(nproc)
           make package
-
       - name: store-artifacts
       - uses: actions/upload-artifact@v4
         with:
