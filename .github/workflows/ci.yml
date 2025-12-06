@@ -4,6 +4,8 @@ on: [push, pull_request]
 jobs:
   build-debian-13:
     runs-on: self-hosted
+    permissions:
+      packages: read
     container:
       image: ghcr.io/finleywood/sc3-camera-connector/builder:latest
     steps:
