@@ -7,7 +7,9 @@ jobs:
     container:
       image: ghcr.io/finleywood/sc3-camera-connector/builder:latest
     steps:
+      - name: checkout
       - uses: actions/checkout@v4
+	  
       - name: build
         run: |
           mkdir build
@@ -16,6 +18,8 @@ jobs:
           make -j$(nproc)
           make package
 
+      - name: store-artifacts
       - uses: actions/upload-artifact@v4
-			- name: store-artifacts
-			  path: build/*.deb
+        with:
+          name: deb-package
+          path: build/*.deb
