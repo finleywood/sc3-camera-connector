@@ -9,10 +9,10 @@ jobs:
     steps:
       - name: checkout-repo
         uses: actions/checkout@v5
+        with:
+          fetch-tags: true
       - name: Mark repo as safe
         run: git config --global --add safe.directory "$GITHUB_WORKSPACE"
-      - name: Fetch tags
-        run: git fetch --tags
       - name: build
         run: |
           bash scripts/gitver.sh
