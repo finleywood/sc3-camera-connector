@@ -10,6 +10,7 @@
 #include "Messages/EventMessage.h"
 #include "Base64.h"
 #include "Messages/StringMessage.h"
+#include "UUIDV4.h"
 
 // Define static constexpr members
 constexpr int CameraManager::MAX_TIMEOUTS;
@@ -53,19 +54,30 @@ void CameraManager::ProcessCollectionStart(const StringMessage &msg)
                     "waiting on a decision, discarding the old one."
                  << std::endl;
     this->ResetEventState();
-    this->event_state.uid = msg.content;
+		if(msg.content.empty()) {
+			UuidV4 uuid_gen;
+			this->event_state.uid = uuid_gen.generate();
+		} else {
+			this->event_state.uid = msg.content;
+		}
     this->frames_since_event_started = 0;
 		this->TransitionTo(CameraState::WAITING_FOR_COLLECTION);
+		return;
   }
 	
 	if(this->event_state.valid()) {
 		// Collection already active, cannot start new one
 		StringMessage msg_out;
 		msg_out.MsgType = MessageType::COLLECTION_FAILURE;
-		msg_out.content = msg.content;
+		msg_out.content = "Collection already in progress, cannot start a new one.";
 		CommandManager::GetCM().SubmitMessage(msg_out);
 	} else {
-		this->event_state.uid = msg.content;
+		if(msg.content.empty()) {
+			UuidV4 uuid_gen;
+			this->event_state.uid = uuid_gen.generate();
+		} else {
+			this->event_state.uid = msg.content;
+		}
 		this->frames_since_event_started = 0;
 	}
 }
@@ -370,7 +382,7 @@ void CameraManager::HandleReconnectFailed() {
 	if(this->event_state.valid()) {
 		StringMessage msg;
 		msg.MsgType = MessageType::COLLECTION_FAILURE;
-		msg.content = this->event_state.uid;
+		msg.content = "Failed to connect to camera, please try again.";
 		CommandManager::GetCM().SubmitMessage(msg);
 	}
 	this->TransitionTo(CameraState::COLLECTION_FINISHED);
@@ -566,16 +578,9 @@ void CameraManager::HandleCapture(k4a_capture_t* cap) {
 			}
             
 			auto now = std::chrono::system_clock::now();
-			found_qr.event_time = std::chrono::duration_cast<std::chrono::seconds>(
-																																						 now.time_since_epoch()).count();
+			found_qr.event_time = std::chrono::duration_cast<std::chrono::seconds>(now.time_since_epoch()).count();
             
 			CommandManager& cm = CommandManager::GetCM();
-			// Construct event message to send
-			EventMessage ev_msg;
-			ev_msg.MsgType = MessageType::START_UPLOAD;
-			ev_msg.QrDetection = found_qr;
-			ev_msg.Uid = this->event_state.uid;
-			cm.SubmitMessage(ev_msg);
 
 			// Then let the ui know
 			StringMessage notify_msg;
@@ -583,16 +588,15 @@ void CameraManager::HandleCapture(k4a_capture_t* cap) {
 			notify_msg.content = this->event_state.detection_event.identifier;
 			cm.SubmitMessage(notify_msg);
 
-			this->TransitionTo(CameraState::COLLECTION_FINISHED);
+			this->TransitionTo(CameraState::WAITING_FOR_DECISION);
 
 		} else {
 			if(this->frames_since_event_started >= (MAX_FRAMES_FOR_COLLECTION - 1)) {
 				StringMessage msg;
-				msg.MsgType = MessageType::COLLECTION_FAILURE;
-				msg.content = this->event_state.uid;
+				msg.MsgType = MessageType::DETECTION_FAILURE;
 				CommandManager::GetCM().SubmitMessage(msg);
 
-				this->TransitionTo(CameraState::COLLECTION_FINISHED);
+				this->TransitionTo(CameraState::WAITING_FOR_DECISION);
 			} else {
 				this->frames_since_event_started = this->frames_since_event_started + 1;
 			}

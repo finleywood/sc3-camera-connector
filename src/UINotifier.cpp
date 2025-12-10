@@ -5,6 +5,7 @@
 
 #include <aixlog/aixlog.hpp>
 #include <chrono>
+#include <cstdint>
 #include <sys/socket.h>
 #include <arpa/inet.h>
 #include <sys/un.h>
@@ -14,10 +15,19 @@
 #include <fcntl.h>
 #include <sstream>
 
+#define MAX_MSG_LEN (2000000) // 2MB
+
 static void SetNonBlocking(int fd) {
 	int flags = fcntl(fd, F_GETFL, 0);
 	if (flags == -1) flags = 0;
 	fcntl(fd, F_SETFL, flags | O_NONBLOCK);
+}
+
+static uint32_t to_uint32_be(const unsigned char* buf) {
+    return (uint32_t(buf[0]) << 24) |
+           (uint32_t(buf[1]) << 16) |
+           (uint32_t(buf[2]) << 8)  |
+           (uint32_t(buf[3]));
 }
 
 bool UINotifier::AllowMessage(MessageType msg_type)
@@ -243,14 +253,48 @@ void UINotifier::HandleWaitingForMessage()
 		return;
 	}
 
-	char buf[256];
+	uint32_t buf_len = this->start_msg_recv ? this->p2_len + 1 : 4;
+	unsigned char buf[buf_len];
 	ssize_t msg_bytes = read(this->client_fd, buf, sizeof(buf) - 1);
 
 	if (msg_bytes > 0) {
-		buf[msg_bytes] = '\0';
-		LOG(INFO) << "Got message: " << buf << std::endl;
-		this->ProcessClientMessage(buf);
-		return;
+		if (!this->start_msg_recv) {
+			LOG(INFO) << "New message receive started, attempting to "
+				"find length."
+								<< std::endl;
+			if(msg_bytes != 4) {
+				// Not 32-bit int, so not following messaging protocol, reject.
+				LOG(INFO) << "Message received was not the length header, rejecting." << std::endl;
+				return;
+			} else {
+				uint32_t be_len = to_uint32_be(&buf[0]);
+				if(be_len <= 0) {
+					LOG(INFO) << "Message type either an invalid length, or too long." << std::endl;
+					return;
+				} else if(be_len > MAX_MSG_LEN) {
+					LOG(INFO) << "Cannot process expected message, as message length of " << be_len << " is too long." << std::endl;
+					return;
+				}
+				else {
+					this->start_msg_recv = true;
+					this->p2_len = be_len;
+					LOG(INFO) << "Expecting message of length " << this->p2_len << std::endl;
+					return;
+				}
+			}						
+		} else {
+			if(msg_bytes != this->p2_len) {
+				LOG(INFO) << "Received unexpected size of message, discarding." << std::endl;
+				this->start_msg_recv = false;
+				this->p2_len = 0;
+				return;
+			}
+			buf[msg_bytes] = '\0';
+			this->ProcessClientMessage(std::string(reinterpret_cast<const char*>(buf)));
+			this->start_msg_recv = false;
+			this->p2_len = 0;
+			return;
+		}
 	}
 
 	if (msg_bytes == 0) {
