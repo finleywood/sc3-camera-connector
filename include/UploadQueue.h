@@ -16,45 +16,47 @@
 #include "Messages/EventMessage.h"
 
 typedef enum {
-    STOPPED,
-    RUNNING
+	STOPPED,
+	RUNNING
 } QueueStatus_t;
 
 class UploadQueue : public CommandReceiver {
 public:
-    QueueStatus_t CurrentStatus = QueueStatus_t::STOPPED;
+	QueueStatus_t CurrentStatus = QueueStatus_t::STOPPED;
 
-    UploadQueue(UpstreamTransport* transport, uint8_t max_retry, uint8_t max_size = 64) :
-        CommandReceiver(),
-        max_size(max_size),
-        max_retry(max_retry),
-        transport_ptr(std::unique_ptr<UpstreamTransport> { transport })
-    {
-        CommandManager& cm = CommandManager::GetCM();
-        cm.Register("UploadQueue", this);
-    }
+	UploadQueue(UpstreamTransport* transport, uint8_t max_retry, uint8_t max_size = 64, bool enable_http_upload = true, bool enable_usb_download = true) :
+		CommandReceiver(),
+		max_size(max_size),
+		max_retry(max_retry),
+		transport_ptr(std::unique_ptr<UpstreamTransport> { transport })
+	{
+		CommandManager& cm = CommandManager::GetCM();
+		cm.Register("UploadQueue", this);
+	}
 
-    virtual bool AllowMessage(MessageType) override;
-    virtual void ProcessMessage(const BaseMessage&) override;
+	virtual bool AllowMessage(MessageType) override;
+	virtual void ProcessMessage(const BaseMessage&) override;
 
-    void AddUploadItem(const UploadItem&);
-    void DeleteUnapprovedItem(std::string);
+	void AddUploadItem(const UploadItem&);
+	void DeleteUnapprovedItem(std::string);
 
-    bool Start();
-    void Stop();
+	bool Start();
+	void Stop();
 
-    void ProcessNewUpload(const EventMessage&);
+	void ProcessNewUpload(const EventMessage &);
 private:
-    std::thread q_thread;
-    std::unique_ptr<UpstreamTransport> transport_ptr;
-    std::queue<UploadItem> upload_q {};
-    uint8_t max_size;
-    uint8_t max_retry;
-    std::mutex q_lock;
-    std::atomic_bool should_stop;
-
-    void Enqueue(UploadItem);
-    UploadItem Dequeue();
-    void MainLoop();
-    bool Close();
+	std::thread q_thread;
+	std::unique_ptr<UpstreamTransport> transport_ptr;
+	std::queue<UploadItem> upload_q {};
+	uint8_t max_size;
+	uint8_t max_retry;
+	std::mutex q_lock;
+	std::atomic_bool should_stop;
+  bool http_upload_enabled;
+	bool usb_download_enabled;
+	
+	void Enqueue(UploadItem);
+	UploadItem Dequeue();
+	void MainLoop();
+	bool Close();
 };
