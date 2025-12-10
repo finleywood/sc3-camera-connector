@@ -26,3 +26,29 @@ jobs:
         with:
           name: deb-package
           path: build/*.deb
+  
+  build-debian-13-arm64:
+    runs-on: self-hosted
+    container: 
+      image: ghcr.io/finleywood/sc3-camera-connector/builder-arm:latest
+    steps:
+      - name: checkout-repo
+        uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+      - name: Mark repo as safe
+        run: git config --global --add safe.directory "$GITHUB_WORKSPACE"
+      - name: build
+        run: |
+          bash scripts/gitver.sh
+          mkdir build
+          cd build
+          cmake ..
+          make -j$(nproc)
+          make package
+      - name: store-artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: deb-package
+          path: build/*.deb
+
