@@ -255,13 +255,16 @@ void UINotifier::HandleWaitingForMessage()
 
 	uint32_t buf_len = this->start_msg_recv ? this->p2_len + 1 : 4;
 	unsigned char buf[buf_len];
-	ssize_t msg_bytes = read(this->client_fd, buf, sizeof(buf) - 1);
+	ssize_t msg_bytes = read(this->client_fd, buf, this->start_msg_recv ? buf_len - 1 : buf_len);
 
 	if (msg_bytes > 0) {
 		if (!this->start_msg_recv) {
 			LOG(INFO) << "New message receive started, attempting to "
 				"find length."
 								<< std::endl;
+			for(int i = 0; i < buf_len; i++) {
+				LOG(INFO) << "Message byte " << i << ": " << buf[i] << std::endl;
+			}
 			if(msg_bytes != 4) {
 				// Not 32-bit int, so not following messaging protocol, reject.
 				LOG(INFO) << "Message received was not the length header, rejecting." << std::endl;
