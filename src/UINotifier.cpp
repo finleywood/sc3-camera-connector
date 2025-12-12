@@ -40,6 +40,7 @@ bool UINotifier::AllowMessage(MessageType msg_type)
 	case MessageType::UPLOAD_FAILURE:
 	case MessageType::USB_DEV:
 	case MessageType::COLLECTION_THUMBNAIL:
+	case MessageType::DETECTION_FAILURE:
 		return true;
 		break;
 	default:
@@ -58,6 +59,7 @@ void UINotifier::ProcessMessage(const BaseMessage& msg)
 	case MessageType::UPLOAD_FAILURE:
 	case MessageType::USB_DEV:
 	case MessageType::COLLECTION_THUMBNAIL:
+	case MessageType::DETECTION_FAILURE:
 		this->ProcessSendStringMessage(static_cast<const StringMessage&>(msg));
 		return;
 	default:
@@ -351,6 +353,7 @@ bool UINotifier::SendMessage(std::string msg)
 
 	// Write 4 byte length followed by actual message
 	uint32_t length = msg.size();
+	LOG(INFO) << "Sending message to UI of size" << static_cast<int>(length) << std::endl;
 	// Ensure big-endian
 	uint32_t big_end_len = htonl(length);
 	write(this->client_fd, &big_end_len, sizeof(big_end_len));
@@ -397,7 +400,8 @@ void UINotifier::ProcessClientMessage(std::string msg)
 	case MessageType::START_COLLECTION:
 	case MessageType::USB_LIST:
 	case MessageType::COLLECTION_REJECT:
-  case MessageType::START_UPLOAD:
+  	case MessageType::START_UPLOAD:
+	case MessageType::COLLECTION_THUMBNAIL_REQUEST:
 		this->SendStringMsg(msg_type_enum, msg_body);
 		break;
 	default:

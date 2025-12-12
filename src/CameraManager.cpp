@@ -24,6 +24,7 @@ bool CameraManager::AllowMessage(MessageType msg_type)
 	case MessageType::START_COLLECTION:
   case MessageType::COLLECTION_REJECT:
 	case MessageType::START_UPLOAD:
+	case MessageType::COLLECTION_THUMBNAIL_REQUEST:
     return true;
 		break;
 	default:
@@ -41,8 +42,22 @@ void CameraManager::ProcessMessage(const BaseMessage& msg)
   case MessageType::START_UPLOAD:
     this->ProcessStartUpload(static_cast<const StringMessage &>(msg));
 		break;
+	case MessageType::COLLECTION_THUMBNAIL_REQUEST:
+		this->ProcessCollectionThumnailRequest(static_cast<const StringMessage &>(msg));
+		break;
 	default:
 		break;
+	}
+}
+
+void CameraManager::ProcessCollectionThumnailRequest(const StringMessage& msg)
+{
+	if(!msg.content.empty())
+		return;
+
+	LOG(INFO) << "Received request for collection thumnail." << std::endl;
+	if(this->event_state.valid()) {
+		this->SendThumnail(this->event_state.detection_event.rgb_img);
 	}
 }
 
@@ -243,13 +258,12 @@ void CameraManager::HandleWaitingForCollection()
 void CameraManager::HandleCollectionFinished()
 {
 	LOG(INFO) << "Collection period finished, closing device." << std::endl;
-	this->CleanupResources();
 	this->TransitionTo(CameraState::WAITING_FOR_DECISION);
 }
 
 void CameraManager::HandleWaitingForDecision()
 {
-  // Do nothing for now
+	this->CleanupResources();
 	return;
 }
 
@@ -280,30 +294,31 @@ void CameraManager::HandleStartingCameras() {
 }
 
 void CameraManager::HandleStreaming() {
+	LOG(INFO) << "Handling streaming" << std::endl;
 	k4a_capture_t capture = nullptr;
 	k4a_wait_result_t result = k4a_device_get_capture(current_device, &capture, 1000);
+	LOG(INFO) << "Got result: " << static_cast<int>(result)  << std::endl;
 	if(!this->event_state.valid()) {
+		LOG(INFO) << "Event state not valid." << std::endl;
 		if(capture)
 			k4a_capture_release(capture);
 		return;
 	}
-    
-	if (result == K4A_WAIT_RESULT_SUCCEEDED) {
-		consecutive_timeouts = 0;
-		LOG(DEBUG) << "Starting streaming." << std::endl;
-		HandleCapture(&capture);
-		if (capture != nullptr) {
-			k4a_capture_release(capture);
-		}
-	} else if (result == K4A_WAIT_RESULT_TIMEOUT) {
+
+	if(result == K4A_WAIT_RESULT_TIMEOUT || result == K4A_WAIT_RESULT_FAILED) {
 		consecutive_timeouts++;
 		if (consecutive_timeouts >= MAX_TIMEOUTS) {
 			LOG(INFO) << "Too many timeouts, checking health..." << std::endl;
 			TransitionTo(CameraState::HEALTH_CHECK);
 		}
-	} else {
-		LOG(WARNING) << "Capture failed" << std::endl;
-		TransitionTo(CameraState::DISCONNECTED);
+		return;
+	}
+    
+	consecutive_timeouts = 0;
+	LOG(DEBUG) << "Starting streaming." << std::endl;
+	HandleCapture(&capture);
+	if (capture != nullptr) {
+		k4a_capture_release(capture);
 	}
 }
 
@@ -519,11 +534,36 @@ QRDetection CameraManager::LookForQR(k4a_image_t* img) {
 	}
 }
 
+void CameraManager::SendThumnail(const EncodedImage& orig_img)
+{
+	if(!orig_img.valid())
+		return;
+	EncodedImage jpeg_thumnail = ImageUtils::JpegToThumbnail(orig_img, 640);
+	if(!jpeg_thumnail.valid()) {
+		LOG(WARNING) << "Unable to get image thumnail." << std::endl;
+	} else {
+		std::string b64_thumnail = base64_encode(jpeg_thumnail.data.get(), jpeg_thumnail.size);
+		size_t encoded_size = b64_thumnail.size();
+		LOG(INFO) << "Sending thumnail of size " << static_cast<int>(jpeg_thumnail.size) << ", encoded size: " << static_cast<int>(encoded_size) << std::endl;
+		if(!b64_thumnail.empty()) {
+			StringMessage thumnail_msg;
+			thumnail_msg.MsgType = MessageType::COLLECTION_THUMBNAIL;
+			thumnail_msg.content = b64_thumnail;
+			CommandManager& cm = CommandManager::GetCM();
+			cm.SubmitMessage(thumnail_msg);
+		} else {
+			LOG(WARNING) << "Cannot send thumnail, unable to b64 encode byte array." << std::endl;
+		}
+	}
+}
+
 void CameraManager::HandleCapture(k4a_capture_t* cap) {
 	if (cap == nullptr || *cap == nullptr) {
 		LOG(DEBUG) << "Capture is null, cannot process." << std::endl;
 		return;
 	}
+
+	LOG(INFO) << "Doing capture stuff." << std::endl;
     
 	k4a_image_t color_image = k4a_capture_get_color_image(*cap);
 	k4a_image_t depth_image = nullptr;
@@ -542,44 +582,26 @@ void CameraManager::HandleCapture(k4a_capture_t* cap) {
 		}
 		// Look for QR
 		QRDetection found_qr = this->LookForQR(&color_image);
+		auto now = std::chrono::system_clock::now();
+		found_qr.event_time = std::chrono::duration_cast<std::chrono::seconds>(now.time_since_epoch()).count();
 
-		if(!found_qr.identifier.empty()) {
-			EncodedImage rgb_jpeg = ImageUtils::K4AToJpeg(&color_image);
-			if (!rgb_jpeg.valid()) {
-				LOG(ERROR) << "Failed to encode RGB image" << std::endl;
-				if (color_image != nullptr) k4a_image_release(color_image);
-				if (depth_image != nullptr) k4a_image_release(depth_image);
-				return;
-			}
-            
-			found_qr.rgb_img = std::move(rgb_jpeg);
+		EncodedImage rgb_jpeg = ImageUtils::K4AToJpeg(&color_image);
+		if (!rgb_jpeg.valid()) {
+			LOG(ERROR) << "Failed to encode RGB image" << std::endl;
+			if (color_image != nullptr) k4a_image_release(color_image);
+			if (depth_image != nullptr) k4a_image_release(depth_image);
+			return;
+		}
+		found_qr.rgb_img = std::move(rgb_jpeg);
 
-			EncodedImage jpeg_thumnail = ImageUtils::RawToThumnail(&color_image, 640);
-			if(!jpeg_thumnail.valid()) {
-				LOG(WARNING) << "Unable to get image thumnail." << std::endl;
-			} else {
-				std::string b64_thumnail = base64_encode(jpeg_thumnail.data.get(), jpeg_thumnail.size);
-				if(!b64_thumnail.empty()) {
-					StringMessage thumnail_msg;
-					thumnail_msg.MsgType = MessageType::COLLECTION_THUMBNAIL;
-					thumnail_msg.content = b64_thumnail;
-					CommandManager& cm = CommandManager::GetCM();
-					cm.SubmitMessage(thumnail_msg);
-				} else {
-					LOG(WARNING) << "Cannot send thumnail, unable to b64 encode byte array." << std::endl;
-				}
+		if (enable_depth && depth_image != nullptr) {
+			EncodedImage depth_png = ImageUtils::K4AToPng(&depth_image);
+			if (depth_png.valid()) {
+				found_qr.depth_image = std::move(depth_png);
 			}
-            
-			if (enable_depth && depth_image != nullptr) {
-				EncodedImage depth_png = ImageUtils::K4AToPng(&depth_image);
-				if (depth_png.valid()) {
-					found_qr.depth_image = std::move(depth_png);
-				}
-			}
-            
-			auto now = std::chrono::system_clock::now();
-			found_qr.event_time = std::chrono::duration_cast<std::chrono::seconds>(now.time_since_epoch()).count();
-            
+		}
+
+		if(!found_qr.identifier.empty()) {            
 			CommandManager& cm = CommandManager::GetCM();
 
 			// Then let the ui know
@@ -587,6 +609,8 @@ void CameraManager::HandleCapture(k4a_capture_t* cap) {
 			notify_msg.MsgType = MessageType::COLLECTION_SUCCESS;
 			notify_msg.content = this->event_state.detection_event.identifier;
 			cm.SubmitMessage(notify_msg);
+
+			this->event_state.detection_event = found_qr;
 
 			this->TransitionTo(CameraState::WAITING_FOR_DECISION);
 
@@ -596,12 +620,14 @@ void CameraManager::HandleCapture(k4a_capture_t* cap) {
 				msg.MsgType = MessageType::DETECTION_FAILURE;
 				CommandManager::GetCM().SubmitMessage(msg);
 
+				// Store last image as capture
+				this->event_state.detection_event = found_qr;
+
 				this->TransitionTo(CameraState::WAITING_FOR_DECISION);
 			} else {
 				this->frames_since_event_started = this->frames_since_event_started + 1;
 			}
 		}
-        
 	}
     
 	if (color_image != nullptr) k4a_image_release(color_image);

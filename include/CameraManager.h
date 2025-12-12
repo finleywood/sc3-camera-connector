@@ -108,8 +108,12 @@ private:
 
 	// Process methods for command receiver
 	void ProcessCollectionStart(const StringMessage&);
-  void ProcessCollectionReject();
+  	void ProcessCollectionReject();
 	void ProcessStartUpload(const StringMessage&);
+	void ProcessCollectionThumnailRequest(const StringMessage&);
+
+	// Util methods
+	void SendThumnail(const EncodedImage&);
 	
 	// Capture handling
 	void HandleCapture(k4a_capture_t* cap);
