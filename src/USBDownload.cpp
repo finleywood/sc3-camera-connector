@@ -1,10 +1,14 @@
 #include "USBDownload.h"
+#include <aixlog/aixlog.hpp>
+#include <json/json.hpp>
 
 extern "C" {
 
 #include <miniz/miniz.h>
 
 }
+
+using json = nlohmann::json;
 
 std::string USBDownload::getCmdOutput(std::string cmd, bool remove_whitespace, int* rt_code) {
   FILE* proc = popen(cmd.c_str(), "r");
@@ -83,7 +87,25 @@ bool USBDownload::ensureMounted(const WriteablePart& wp) {
 bool USBDownload::SaveDetection(QRDetection& qr_det) {
   if(!qr_det.valid() || !this->wp.valid()) return false;
   
-  // Do something
+  // Construct output 
+  json output_obj;
+  output_obj["patient_id"] = qr_det.identifier;
+  output_obj["datetime"] = qr_det.event_time;
+  output_obj["weight"] = 0.0f;
+
+  // Construct zip in memory
+
+  mz_zip_archive zip;
+  memset(&zip, 0, sizeof(zip));
+  std::string out_name = generateOutputPath(this->wp);
+  if(!mz_zip_writer_init_file(&zip, out_name.c_str(), 0); // Fill this out, needs output name 
+  
 
   return true;
+}
+
+std::string USBDownload::generateOutputPath(const WriteablePart& wp) {
+ if(wp.mountPoint.empty()) return "";
+
+ // Do timestamp gen on unix timetamp and get date folder.
 }
