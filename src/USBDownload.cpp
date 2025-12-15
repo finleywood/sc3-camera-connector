@@ -1,47 +1,89 @@
 #include "USBDownload.h"
-#include "Messages/StringMessage.h"
-#include <chrono>
 
-bool USBDownload::AllowMessage(MessageType msg_type)
-{
-    switch(msg_type) {
-        case MessageType::USB_DOWNLOAD:
-        case MessageType::USB_LIST:
-            return true;
-            break;
-        default:
-            return false;
-            break;
-    }
+extern "C" {
+
+#include <miniz/miniz.h>
+
 }
 
-void USBDownload::ProcessMessage(const BaseMessage& msg)
-{
-    switch(msg.MsgType) {
-        case MessageType::USB_DOWNLOAD:
-            this->HandleUSBDownload(static_cast<const EventMessage&>(msg));
-            break;
-        case MessageType::USB_LIST:
-            this->HandleUSBList();
-            break;
-        default:
-            break;
+std::string USBDownload::getCmdOutput(std::string cmd, bool remove_whitespace, int* rt_code) {
+  FILE* proc = popen(cmd.c_str(), "r");
+  if(!proc) return "";
+
+  char buffer[256];
+  std::string result;
+
+  
+  if(fgets(buffer, sizeof(buffer), proc)) {
+    result = buffer;
+    if(remove_whitespace) {
+      result.erase(result.find_last_not_of(" \n\r\t") + 1);
     }
+  }
+
+  int status = pclose(proc);
+  if(rt_code != nullptr) {
+    if(status != -1) {
+       if(WIFEXITED(status)) {
+          *rt_code = WEXITSTATUS(status);
+       } else {
+          *rt_code = -1;
+       }
+    } else {
+      *rt_code = -1;
+    }
+  }
+  
+  return result;
 }
 
-void USBDownload::HandleUSBDownload(const EventMessage& msg)
-{
-    
+WriteablePart USBDownload::getUSBDevice() {
+ WriteablePart wp_res;
+ wp_res.devicePath = getCmdOutput("/sbin/blkid -o device -t TYPE=vfat /dev/sd*", true);
+ return wp_res;
 }
 
-void USBDownload::HandleUSBList()
-{
-    std::vector<USBDevice> usb_devices = this->udm.getAvailableDevices();
-    for(auto& dev : usb_devices) {
-        std::string msg_content = "name=" + dev.deviceName + ",path=" + dev.devicePath;
-        StringMessage dev_msg;
-        dev_msg.MsgType = MessageType::USB_DEV;
-        dev_msg.content = msg_content;
-        CommandManager::GetCM().SubmitMessage(dev_msg);
-    }
+WriteablePart& USBDownload::getMountPoint(WriteablePart& wp) {
+  std::string cmd = std::string("/bin/lsblk -o MOUNTPOINT ") + wp.devicePath; 
+  std::string cur_mnt_pt = getCmdOutput(cmd, true);
+  if(cur_mnt_pt.empty()) {
+    // Doesn't exist, need to make one
+    std::string proposed_mnt = generateMountPoint(wp);
+    // Ensure folder exists
+    cmd = std::string("mkdir -p ") + proposed_mnt;
+    getCmdOutput(cmd, true);
+    // Now ensure mounted
+    wp.mountPoint = proposed_mnt;
+    bool could_mount = ensureMounted(wp);
+    if(!could_mount) wp.mountPoint = "";
+  } else {
+    wp.mountPoint = cur_mnt_pt;
+  }
+  return wp;
+}
+
+std::string USBDownload::generateMountPoint(const WriteablePart& wp) {
+  if(wp.devicePath.empty()) return "";
+
+  auto pos = wp.devicePath.find_last_of('/');
+  std::string last_part = (pos == std::string::npos) ? wp.devicePath : wp.devicePath.substr(pos + 1);
+  std::string mnt_path = std::string("/mnt/export_") + last_part;
+  return mnt_path;
+}
+
+bool USBDownload::ensureMounted(const WriteablePart& wp) {
+  if(wp.devicePath.empty() || wp.mountPoint.empty()) return false;
+
+  std::string cmd = std::string("/bin/mount ") + wp.devicePath + std::string(" ") + wp.mountPoint;
+  int ret_code = -1; 
+  getCmdOutput(cmd, true, &ret_code); 
+  return ret_code == 0;
+}
+
+bool USBDownload::SaveDetection(QRDetection& qr_det) {
+  if(!qr_det.valid() || !this->wp.valid()) return false;
+  
+  // Do something
+
+  return true;
 }

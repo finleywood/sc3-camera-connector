@@ -10,7 +10,6 @@ set(SOURCES
     ${CMAKE_CURRENT_SOURCE_DIR}/CommandManager.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/CommandReceiver.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/Messages/BaseMessage.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/USBDeviceManager.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/USBDownload.cpp
     PARENT_SCOPE
 )

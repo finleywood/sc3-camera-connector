@@ -1,36 +1,32 @@
 #pragma once
 
-#include <thread>
-#include <atomic>
-#include <aixlog/aixlog.hpp>
+#include <vector>
+#include <string>
+#include <stdio.h>
 
-#include "USBDeviceManager.h"
-#include "CommandManager.h"
-#include "CommandReceiver.h"
-#include "MessageTypes.h"
-#include "Messages/BaseMessage.h"
-#include "Messages/EventMessage.h"
+#include "QRDetection.h"
 
-class USBDownload : public CommandReceiver {
+struct WriteablePart {
+  std::string partType = "vfat";
+  std::string devicePath;
+  std::string mountPoint;
+  bool valid() { return !(devicePath.empty() && mountPoint.empty()); };
+};
+
+class USBDownload {
 public:
-    USBDownload()
-        : CommandReceiver()
-        {
-            CommandManager::GetCM().Register("USBDownload", this);
-            this->udm.startMonitoring([](const std::vector<USBDevice>& devices) {
-                LOG(INFO) << "USB devices changed. Available devices:\n";
-                for (const auto& device : devices) {
-                    LOG(INFO) << "  - " << device.deviceName << " (" << device.devicePath << ")\n";
-                }
-            });
-        }
+  USBDownload() {
+    this->wp = getUSBDevice();
+    getMountPoint(this->wp);
+  }
 
-    virtual bool AllowMessage(MessageType) override;
-    virtual void ProcessMessage(const BaseMessage&) override;
-
+  bool SaveDetection(QRDetection&);
 private:
-    USBDeviceManager udm;
+  WriteablePart wp;
 
-    void HandleUSBDownload(const EventMessage&);
-    void HandleUSBList();
+  std::string getCmdOutput(std::string, bool, int* = nullptr);
+  WriteablePart getUSBDevice();
+  WriteablePart& getMountPoint(WriteablePart&);
+  bool ensureMounted(const WriteablePart&);
+  std::string generateMountPoint(const WriteablePart&);
 };

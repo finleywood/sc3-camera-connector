@@ -119,8 +119,6 @@ int main(int argc, char** argv)
 	UINotifier ui_notifier(socket_path);
 	ui_notifier.Start();
 
-	USBDownload usb_download;
-
 	CameraManager camera_manager(0, true, args.show_gui);
 	bool status = camera_manager.Start(true);
 

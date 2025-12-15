@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.5.0)
 
-project(SC3-Camera-Connector VERSION 1.0 LANGUAGES CXX)
+project(SC3-Camera-Connector VERSION 1.0 LANGUAGES C CXX)
 
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
@@ -19,9 +19,15 @@ pkg_check_modules(UDEV REQUIRED libudev)
 # Add your source files
 add_executable(${PROJECT_NAME} ${SOURCES} ${HEADERS})
 
+add_library(miniz STATIC src/miniz/miniz.c)
+
+target_include_directories(miniz PUBLIC include/miniz)
+
 target_link_libraries(${PROJECT_NAME} PRIVATE k4a::k4a ${OpenCV_LIBS} CURL::libcurl ${UDEV_LIBRARIES})
 
 target_include_directories(${PROJECT_NAME} PRIVATE include)
+
+target_link_libraries(${PROJECT_NAME} PRIVATE miniz)
 
 install(TARGETS ${PROJECT_NAME}
     RUNTIME DESTINATION bin
