@@ -1,6 +1,8 @@
 #include "USBDownload.h"
 #include <aixlog/aixlog.hpp>
 #include <json/json.hpp>
+#include <ctime>
+#include <cstdio>
 
 extern "C" {
 
@@ -9,6 +11,26 @@ extern "C" {
 }
 
 using json = nlohmann::json;
+
+std::string unixTimestampToDateString(uint64_t timestamp)
+{
+    time_t ts = static_cast<time_t>(timestamp);
+
+    struct tm tm {};
+    localtime_r(&ts, &tm);
+
+    char buffer[11]; // "yyyy_mm_dd" + null
+    std::snprintf(
+        buffer,
+        sizeof(buffer),
+        "%04d_%02d_%02d",
+        tm.tm_year + 1900,
+        tm.tm_mon + 1,
+        tm.tm_mday
+    );
+
+    return std::string(buffer);
+}
 
 std::string USBDownload::getCmdOutput(std::string cmd, bool remove_whitespace, int* rt_code) {
   FILE* proc = popen(cmd.c_str(), "r");
@@ -97,15 +119,43 @@ bool USBDownload::SaveDetection(QRDetection& qr_det) {
 
   mz_zip_archive zip;
   memset(&zip, 0, sizeof(zip));
-  std::string out_name = generateOutputPath(this->wp);
-  if(!mz_zip_writer_init_file(&zip, out_name.c_str(), 0); // Fill this out, needs output name 
+  std::string out_name = generateOutputPath(this->wp, qr_det);
+  if(!mz_zip_writer_init_file(&zip, out_name.c_str(), 0)) {
+    LOG(INFO) << "Was unable to create zip buffer." << std::endl;
+    return false;
+  }
   
+  if(!mz_zip_writer_add_mem(&zip, "rgb.jpg", qr_det.rgb_img.data.get(), qr_det.rgb_img.size, MZ_BEST_COMPRESSION)) {
+    LOG(WARNING) << "Could not add rgb image to zip file." << std::endl;
+    return false;
+  }
+
+  if(!mz_zip_writer_add_mem(&zip, "depth.png", qr_det.depth_image.data.get(), qr_det.depth_image.size, MZ_BEST_COMPRESSION)) {
+    LOG(WARNING) << "Could not add depth to zip file." << std::endl;
+    return false;
+  }
+
+  std::string manifest_str = output_obj.dump();
+  if(!mz_zip_writer_add_mem(&zip, "manifest.json", manifest_str.data(), manifest_str.size(), MZ_BEST_COMPRESSION)) {
+    LOG(WARNING) << "Could not add manifest zip file." << std::endl;
+    return false;
+  }
+
+  mz_zip_writer_end(&zip);
 
   return true;
 }
 
-std::string USBDownload::generateOutputPath(const WriteablePart& wp) {
- if(wp.mountPoint.empty()) return "";
+std::string USBDownload::generateOutputPath(const WriteablePart& wp, const QRDetection& qr) {
+  if(wp.mountPoint.empty()) return "";
 
- // Do timestamp gen on unix timetamp and get date folder.
+  std::string date_str = unixTimestampToDateString(qr.event_time);
+  if(date_str.empty()) return "";
+
+  std::string out_path_dir = wp.mountPoint + std::string("/") + date_str;
+  // ensure dir exists
+
+  std::string cmd = std::string("mkdir -p ") + out_path_dir;
+  getCmdOutput(cmd, true);
+  return out_path_dir + std::string("/") + qr.identifier + std::string(".zip");
 }

@@ -1,5 +1,6 @@
 #include "UploadQueue.h"
 #include "MessageTypes.h"
+#include "USBDownload.h"
 #include "aixlog/aixlog.hpp"
 
 #include <stdexcept>
@@ -122,9 +123,9 @@ void UploadQueue::MainLoop()
 		cm.SubmitMessage(upload_start_message);
 
 		bool upload_success = false;
-    while (true) {
-      if (!this->http_upload_enabled)
-				return;
+		while (true) {
+			if (!this->http_upload_enabled)
+				break;
 			item.retry_num = item.retry_num + 1;
 			LOG(INFO) << "Starting upload attempt " << static_cast<int>(item.retry_num) << " out of " << static_cast<int>(this->max_retry) << "." << std::endl;
 			if(this->transport_ptr->UploadQueueItem(item)) {
@@ -140,18 +141,19 @@ void UploadQueue::MainLoop()
 			std::this_thread::sleep_for(std::chrono::milliseconds(5000));
 		}
 
+		bool final_success = upload_success;
+		// If upload wasn't successful, fallback on usb
+		if(!upload_success) {
+			LOG(INFO) << "Http upload unsuccessful, falling back to USB." << std::endl;
+			USBDownload usb_d;
+			final_success = usb_d.SaveDetection(item.qr_det);
+			LOG(INFO) << "USB Download " <<  (final_success ? "was successful." : "failed.") << std::endl;
+ 		}
+
 		StringMessage upload_status_msg;
 		upload_status_msg.content = item.uid;
-		upload_status_msg.MsgType = upload_success ? MessageType::UPLOAD_SUCESS : MessageType::UPLOAD_FAILURE;
+		upload_status_msg.MsgType = final_success ? MessageType::UPLOAD_SUCESS : MessageType::UPLOAD_FAILURE;
 		cm.SubmitMessage(upload_status_msg);
-
-		// LOG(INFO) << "Falling back to USB." << std::endl;
-		// TODO
-		// if(this->transport_ptr->USBFallback(item)) {
-		//     LOG(INFO) << "USB Fallback success." << std::endl;
-		// } else {
-		//     LOG(INFO) << "USB Fallback failed, cannot store event." << std::endl;
-		// }
 
 		std::this_thread::sleep_for(std::chrono::milliseconds(1000));
 	}

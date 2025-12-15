@@ -29,5 +29,5 @@ private:
   WriteablePart& getMountPoint(WriteablePart&);
   bool ensureMounted(const WriteablePart&);
   std::string generateMountPoint(const WriteablePart&);
-  std::string generateOutputPath(const WriteablePart&);
+  std::string generateOutputPath(const WriteablePart&, const QRDetection&);
 };
