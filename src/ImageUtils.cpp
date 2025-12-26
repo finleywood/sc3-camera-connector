@@ -1,22 +1,31 @@
 #include "ImageUtils.h"
+#include <vector>
 
 namespace ImageUtils {
 
-cv::Mat K4ARGBToCV(k4a_image_t* img)
+cv::Mat BufToCvCpy(const EncodedImage& img)
 {
-    int width  = k4a_image_get_width_pixels(*img);
-    int height = k4a_image_get_height_pixels(*img);
-    uint8_t* buffer = k4a_image_get_buffer(*img);
-
-    auto bgra_mat = cv::Mat(height, width, CV_8UC4, buffer);
-
-    //Convert to BGR (remove alpha channel)
-    cv::Mat bgr_mat;
-    try {
-        cv::cvtColor(bgra_mat, bgr_mat, cv::COLOR_BGRA2BGR);
-    } catch(std::exception& e) {
-        LOG(WARNING) << "Failed to remove alpha channel from provided frame. Due to: " << e.what() << std::endl;
+    // Validate input
+    if (!img.data || img.size == 0) {
+        return cv::Mat();
     }
+    
+    // Expected size for BGRA format
+    size_t expected_size = img.height * img.width * 4;
+    if (img.size != expected_size) {
+        LOG(WARNING) << "Size mismatch: expected " << expected_size 
+                     << " but got " << img.size;
+        return cv::Mat();
+    }
+    
+    // Create Mat and copy data in one step
+    cv::Mat bgra_mat(img.height, img.width, CV_8UC4);
+    std::memcpy(bgra_mat.data, img.data.get(), img.size);
+    
+    // Convert to BGR (this creates a new Mat with its own memory)
+    cv::Mat bgr_mat;
+    cv::cvtColor(bgra_mat, bgr_mat, cv::COLOR_BGRA2BGR);
+    
     return bgr_mat;
 }
 

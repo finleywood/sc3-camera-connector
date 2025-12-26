@@ -1,5 +1,4 @@
 #include "USBDownload.h"
-#include <aixlog/aixlog.hpp>
 #include <json/json.hpp>
 #include <ctime>
 #include <cstdio>
@@ -47,6 +46,8 @@ std::string USBDownload::getCmdOutput(std::string cmd, bool remove_whitespace, i
     }
   }
 
+  LOG(INFO) << "Ran command: " << cmd.c_str() << " and got output: " << result.c_str() << std::endl;
+
   int status = pclose(proc);
   if(rt_code != nullptr) {
     if(status != -1) {
@@ -70,6 +71,7 @@ WriteablePart USBDownload::getUSBDevice() {
 }
 
 WriteablePart& USBDownload::getMountPoint(WriteablePart& wp) {
+  if(!wp.valid()) return wp;
   std::string cmd = std::string("/bin/lsblk -o MOUNTPOINT ") + wp.devicePath; 
   std::string cur_mnt_pt = getCmdOutput(cmd, true);
   if(cur_mnt_pt.empty()) {

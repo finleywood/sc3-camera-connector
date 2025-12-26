@@ -21,6 +21,7 @@ struct Args {
 	bool has_verbosity = false;
 	bool show_help = false;
 	bool show_gui = false;
+	bool simulation_mode = false;
 };
 
 Args parseArgs(int argc, char* argv[]) {
@@ -64,6 +65,8 @@ Args parseArgs(int argc, char* argv[]) {
 			i++;
 		} else if (arg == "-g" || arg == "--gui") {
 			args.show_gui = true;
+		} else if (arg =="-s" || arg == "--simulation") {
+			args.simulation_mode = true;
 		}
 		else {
 			throw std::runtime_error("Unknown option: " + arg);
@@ -78,6 +81,8 @@ void printHelp() {
 	std::cout << "Usage: " << program_name << " [OPTIONS]\n\n"
 						<< "Options:\n"
 						<< "  -c, --config <string>      Configuration file or string\n"
+						<< "  -g, --gui     Enable debug GUI\n"
+						<< "  -s, --simulation      Use a simulated camera\n"
 						<< "  -v, --verbosity <int>      Verbosity level (0-6)\n"
 						<< "  -h, --help                 Show this help message\n"
 						<< "\n"
@@ -112,14 +117,14 @@ int main(int argc, char** argv)
 	bool enable_http = app_config["enable_http_upload"];
 	bool enable_usb = app_config["enable_usb_download"];
 	// Start upload queue
-	UploadQueue upload_queue(new HttpTransport(server_url), 3, enable_http, enable_usb);
+	UploadQueue upload_queue(new HttpTransport(server_url), 3, 3, enable_http, enable_usb);
 	upload_queue.Start();
 
 	std::string socket_path = app_config["ui_socket_path"];
 	UINotifier ui_notifier(socket_path);
 	ui_notifier.Start();
 
-	CameraManager camera_manager(0, true, args.show_gui);
+	CameraManager camera_manager(args.show_gui, args.simulation_mode);
 	bool status = camera_manager.Start(true);
 
 	camera_manager.Stop();

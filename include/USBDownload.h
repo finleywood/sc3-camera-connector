@@ -1,5 +1,6 @@
 #pragma once
 
+#include <aixlog/aixlog.hpp>
 #include <vector>
 #include <string>
 #include <stdio.h>
@@ -18,6 +19,7 @@ public:
   USBDownload() {
     this->wp = getUSBDevice();
     getMountPoint(this->wp);
+    LOG(INFO) << "USB Store Started, registered device path: " << wp.devicePath.c_str() << " Mount point: " << wp.mountPoint.c_str() << std::endl;
   }
 
   bool SaveDetection(QRDetection&);

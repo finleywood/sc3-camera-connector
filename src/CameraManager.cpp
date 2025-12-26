@@ -11,11 +11,11 @@
 #include "Base64.h"
 #include "Messages/StringMessage.h"
 #include "UUIDV4.h"
+#include "SimulatedCamera.h"
+#include "KinectCamera.h"
 
 // Define static constexpr members
-constexpr int CameraManager::MAX_TIMEOUTS;
 constexpr int CameraManager::MAX_RECONNECT_ATTEMPTS;
-constexpr int CameraManager::MAX_ENUM_ATTEMPTS;
 constexpr int CameraManager::RECONNECT_COOLDOWN_SEC;
 
 bool CameraManager::AllowMessage(MessageType msg_type)
@@ -191,20 +191,8 @@ void CameraManager::RunStateMachine() {
 		case CameraState::INITIALIZING:
 			HandleInitializing();
 			break;
-		case CameraState::DEVICE_OPEN:
-			HandleDeviceOpen();
-			break;
-		case CameraState::STARTING_CAMERAS:
-			HandleStartingCameras();
-			break;
 		case CameraState::STREAMING:
 			HandleStreaming();
-			break;
-		case CameraState::CAPTURE_TIMEOUT:
-			HandleCaptureTimeout();
-			break;
-		case CameraState::HEALTH_CHECK:
-			HandleHealthCheck();
 			break;
 		case CameraState::DISCONNECTED:
 			HandleDisconnected();
@@ -271,80 +259,43 @@ void CameraManager::HandleInitializing() {
 	LOG(INFO) << "Initializing device..." << std::endl;
     
 	if (OpenDevice()) {
-		TransitionTo(CameraState::DEVICE_OPEN);
+		TransitionTo(CameraState::STREAMING);
 	} else {
 		LOG(ERROR) << "Failed to open device" << std::endl;
 		TransitionTo(CameraState::RECONNECTING);
 	}
 }
 
-void CameraManager::HandleDeviceOpen() {
-	LOG(INFO) << "Device opened, configuring cameras..." << std::endl;
-	TransitionTo(CameraState::STARTING_CAMERAS);
-}
-
-void CameraManager::HandleStartingCameras() {
-	if (StartCameras()) {
-		consecutive_timeouts = 0;
-		TransitionTo(CameraState::STREAMING);
-	} else {
-		LOG(ERROR) << "Failed to start cameras" << std::endl;
-		TransitionTo(CameraState::RECONNECTING);
-	}
-}
-
 void CameraManager::HandleStreaming() {
 	LOG(INFO) << "Handling streaming" << std::endl;
-	k4a_capture_t capture = nullptr;
-	k4a_wait_result_t result = k4a_device_get_capture(current_device, &capture, 1000);
-	LOG(INFO) << "Got result: " << static_cast<int>(result)  << std::endl;
+
+	if(this->current_camera.get() == nullptr) {
+		this->TransitionTo(CameraState::INITIALIZING);
+		return;
+	}
+
+	if(!this->current_camera->IsOpen()) {
+		this->TransitionTo(CameraState::INITIALIZING);
+		return;
+	}
+
 	if(!this->event_state.valid()) {
-		LOG(INFO) << "Event state not valid." << std::endl;
-		if(capture)
-			k4a_capture_release(capture);
 		return;
 	}
 
-	if(result == K4A_WAIT_RESULT_TIMEOUT || result == K4A_WAIT_RESULT_FAILED) {
-		consecutive_timeouts++;
-		if (consecutive_timeouts >= MAX_TIMEOUTS) {
-			LOG(INFO) << "Too many timeouts, checking health..." << std::endl;
-			TransitionTo(CameraState::HEALTH_CHECK);
-		}
+	std::pair<EncodedImage, EncodedImage> cap = this->current_camera->GetFrame();
+	if(!cap.first.valid() || !cap.second.valid()) {
+		LOG(WARNING) << "Invalid capture received, will reconnect camera." << std::endl;
+		this->TransitionTo(CameraState::RECONNECTING);
 		return;
 	}
-    
-	consecutive_timeouts = 0;
-	LOG(DEBUG) << "Starting streaming." << std::endl;
-	HandleCapture(&capture);
-	if (capture != nullptr) {
-		k4a_capture_release(capture);
-	}
-}
-
-void CameraManager::HandleCaptureTimeout() {
-	// This is handled in STREAMING state
-	TransitionTo(CameraState::HEALTH_CHECK);
-}
-
-void CameraManager::HandleHealthCheck() {
-	LOG(INFO) << "Performing health check..." << std::endl;
-    
-	if (IsDeviceConnected()) {
-		LOG(INFO) << "Device OK, resuming streaming" << std::endl;
-		consecutive_timeouts = 0;
-		TransitionTo(CameraState::STREAMING);
-	} else {
-		LOG(INFO) << "Device not responding" << std::endl;
-		TransitionTo(CameraState::DISCONNECTED);
-	}
+	HandleCapture(cap);
 }
 
 void CameraManager::HandleDisconnected() {
 	LOG(INFO) << "Device disconnected!" << std::endl;
 	CloseDevice();
 	reconnect_attempts = 0;
-	device_enum_attempts = 0;
 	TransitionTo(CameraState::RECONNECTING);
 }
 
@@ -356,36 +307,15 @@ void CameraManager::HandleReconnecting() {
 }
 
 void CameraManager::HandleWaitingForDevice() {
-	device_enum_attempts++;
-    
-	LOG(DEBUG) << "Waiting for device (attempt " << device_enum_attempts 
-						 << "/" << MAX_ENUM_ATTEMPTS << ")..." << std::endl;
-    
-	std::this_thread::sleep_for(std::chrono::milliseconds(500));
-    
-	uint32_t device_count = k4a_device_get_installed_count();
-    
-	if (device_count > camera_idx) {
-		LOG(INFO) << "Device detected, attempting to open..." << std::endl;
-		device_enum_attempts = 0;
+	LOG(DEBUG) << "Waiting for device (attempt " << reconnect_attempts 
+						<< "/" << MAX_RECONNECT_ATTEMPTS << ")..." << std::endl;
         
-		if (OpenDevice()) {
-			TransitionTo(CameraState::DEVICE_OPEN);
-			reconnect_attempts = 0;
-		} else {
-			reconnect_attempts++;
-			if (reconnect_attempts >= MAX_RECONNECT_ATTEMPTS) {
-				reconnect_attempts = 0;
-				TransitionTo(CameraState::RECONNECT_FAILED);
-			}
-		}
-	} else if (device_enum_attempts >= MAX_ENUM_ATTEMPTS) {
-		device_enum_attempts = 0;
-		reconnect_attempts++;
-        
-		if (reconnect_attempts >= MAX_RECONNECT_ATTEMPTS) {
-			TransitionTo(CameraState::RECONNECT_FAILED);
-		}
+	if(this->reconnect_attempts == MAX_RECONNECT_ATTEMPTS) {
+		this->reconnect_attempts = 0;
+		this->TransitionTo(CameraState::RECONNECT_FAILED);
+	} else {
+		this->reconnect_attempts++;
+		this->TransitionTo(CameraState::INITIALIZING);
 	}
 }
 
@@ -421,26 +351,6 @@ void CameraManager::HandleStopped() {
 }
 
 bool CameraManager::OpenDevice() {
-	uint32_t device_count = k4a_device_get_installed_count();
-    
-	if (device_count == 0) {
-		LOG(WARNING) << "No devices found" << std::endl;
-		return false;
-	}
-    
-	if (camera_idx >= device_count) {
-		LOG(ERROR) << "Camera index " << camera_idx 
-							 << " out of range (only " << device_count 
-							 << " devices available)" << std::endl;
-		return false;
-	}
-    
-	// Disable k4a internal logger as it bloats the log
-	k4a_set_debug_message_handler(NULL, NULL, K4A_LOG_LEVEL_OFF);
-	if (K4A_FAILED(k4a_device_open(camera_idx, &current_device))) {
-		LOG(ERROR) << "Failed to open device " << camera_idx << std::endl;
-		return false;
-	}
 
 	// GUI Init
 	if (gui_enabled) {
@@ -448,54 +358,35 @@ bool CameraManager::OpenDevice() {
 		cv::namedWindow(gui_window_name, cv::WINDOW_NORMAL);
 		cv::resizeWindow(gui_window_name, 960, 540);
 	}
-    
-	LOG(INFO) << "Device " << camera_idx << " opened successfully" << std::endl;
-	return true;
-}
 
-bool CameraManager::StartCameras() {
-	device_config = K4A_DEVICE_CONFIG_INIT_DISABLE_ALL;
-	device_config.color_format = K4A_IMAGE_FORMAT_COLOR_BGRA32;
-	device_config.color_resolution = K4A_COLOR_RESOLUTION_2160P;
-	device_config.depth_mode = enable_depth ? 
-		K4A_DEPTH_MODE_NFOV_UNBINNED : K4A_DEPTH_MODE_OFF;
-	device_config.camera_fps = K4A_FRAMES_PER_SECOND_5;
-    
-	if (K4A_FAILED(k4a_device_start_cameras(current_device, &device_config))) {
-		LOG(ERROR) << "Failed to start cameras" << std::endl;
+	if(is_simulated) {
+		LOG(WARNING) << "Will start a simulated camera." << std::endl;
+		this->current_camera.reset(new SimulatedCamera());
+	} else {
+		this->current_camera.reset(new KinectCamera());
+	}
+
+	if(this->current_camera.get() == nullptr) {
+		LOG(WARNING) << "Failed to open camera, will retry." << std::endl;
 		return false;
 	}
-    
-	LOG(INFO) << "Cameras started successfully" << std::endl;
-	return true;
-}
-
-bool CameraManager::IsDeviceConnected() {
-	if (current_device == nullptr) {
+	bool open_success = this->current_camera->OpenCamera();
+	if(open_success) {
+		LOG(INFO) << "Camera opened successfully." << std::endl;
+		return true;
+	} else {
+		LOG(WARNING) << "Failed to open camera, will retry." << std::endl;
 		return false;
 	}
-    
-	// Try to get serial number as health check
-	size_t serial_size = 0;
-	k4a_buffer_result_t result = k4a_device_get_serialnum(
-																												current_device, nullptr, &serial_size);
-    
-	return result != K4A_BUFFER_RESULT_FAILED;
 }
 
 void CameraManager::CloseDevice() {
-	if (current_device == nullptr) {
-		return;
-	}
+	if (current_camera.get() == nullptr) return;
+
+	if(!current_camera->IsOpen()) return;
     
 	LOG(INFO) << "Closing device..." << std::endl;
-	try {
-		k4a_device_stop_cameras(current_device);
-		k4a_device_close(current_device);
-	} catch(std::exception& e) {
-		LOG(WARNING) << "Closing cameras failed due to: " << e.what() << std::endl;
-	}
-	current_device = nullptr;
+	this->current_camera->CloseCamera();
 }
 
 void CameraManager::CleanupResources() {
@@ -514,8 +405,8 @@ void CameraManager::ResetEventState()
 	this->frames_since_event_started = 0;
 }
 
-QRDetection CameraManager::LookForQR(k4a_image_t* img) {
-	cv::Mat cv_mat_img = ImageUtils::K4ARGBToCV(img);
+QRDetection CameraManager::LookForQR(const EncodedImage& img) {
+	cv::Mat cv_mat_img = ImageUtils::BufToCvCpy(img);
     
 	cv::QRCodeDetector cv_qr;
 	std::vector<cv::Point> qr_detections;
@@ -557,79 +448,49 @@ void CameraManager::SendThumnail(const EncodedImage& orig_img)
 	}
 }
 
-void CameraManager::HandleCapture(k4a_capture_t* cap) {
-	if (cap == nullptr || *cap == nullptr) {
+void CameraManager::HandleCapture(std::pair<EncodedImage, EncodedImage> cap) {
+	if (!cap.first.valid() || !cap.second.valid()) {
 		LOG(DEBUG) << "Capture is null, cannot process." << std::endl;
 		return;
 	}
 
 	LOG(INFO) << "Doing capture stuff." << std::endl;
-    
-	k4a_image_t color_image = k4a_capture_get_color_image(*cap);
-	k4a_image_t depth_image = nullptr;
-    
-	if (enable_depth) {
-		depth_image = k4a_capture_get_depth_image(*cap);
-	}
-    
-	if (color_image != nullptr) {
-		// GUI Stuff
-		if (gui_enabled) {
-			cv::Mat cv_mat_img = ImageUtils::K4ARGBToCV(&color_image);
-			std::lock_guard<std::mutex> lock(gui_mutex);
-			cv::imshow(gui_window_name, cv_mat_img);
-			cv::waitKey(1); // non-blocking
-		}
-		// Look for QR
-		QRDetection found_qr = this->LookForQR(&color_image);
-		auto now = std::chrono::system_clock::now();
-		found_qr.event_time = std::chrono::duration_cast<std::chrono::seconds>(now.time_since_epoch()).count();
 
-		EncodedImage rgb_jpeg = ImageUtils::K4AToJpeg(&color_image);
-		if (!rgb_jpeg.valid()) {
-			LOG(ERROR) << "Failed to encode RGB image" << std::endl;
-			if (color_image != nullptr) k4a_image_release(color_image);
-			if (depth_image != nullptr) k4a_image_release(depth_image);
-			return;
-		}
-		found_qr.rgb_img = std::move(rgb_jpeg);
+	// Look for QR
+	QRDetection found_qr = this->LookForQR(cap.first);
 
-		if (enable_depth && depth_image != nullptr) {
-			EncodedImage depth_png = ImageUtils::K4AToPng(&depth_image);
-			if (depth_png.valid()) {
-				found_qr.depth_image = std::move(depth_png);
-			}
-		}
+	LOG(INFO) << "Pass QR det.";
+	auto now = std::chrono::system_clock::now();
+	found_qr.event_time = std::chrono::duration_cast<std::chrono::seconds>(now.time_since_epoch()).count();
 
-		if(!found_qr.identifier.empty()) {            
-			CommandManager& cm = CommandManager::GetCM();
+	found_qr.rgb_img = std::move(cap.first);
+	found_qr.depth_image = std::move(cap.second);
 
-			// Then let the ui know
-			StringMessage notify_msg;
-			notify_msg.MsgType = MessageType::COLLECTION_SUCCESS;
-			notify_msg.content = this->event_state.detection_event.identifier;
-			cm.SubmitMessage(notify_msg);
+	if(!found_qr.identifier.empty()) {            
+		CommandManager& cm = CommandManager::GetCM();
 
+		// Then let the ui know
+		StringMessage notify_msg;
+		notify_msg.MsgType = MessageType::COLLECTION_SUCCESS;
+		notify_msg.content = this->event_state.detection_event.identifier;
+		cm.SubmitMessage(notify_msg);
+
+		this->event_state.detection_event = found_qr;
+
+		this->TransitionTo(CameraState::WAITING_FOR_DECISION);
+
+	} else {
+		if(this->frames_since_event_started >= (MAX_FRAMES_FOR_COLLECTION - 1)) {
+			StringMessage msg;
+			msg.MsgType = MessageType::DETECTION_FAILURE;
+			CommandManager::GetCM().SubmitMessage(msg);
+
+			// Store last image as capture
 			this->event_state.detection_event = found_qr;
 
 			this->TransitionTo(CameraState::WAITING_FOR_DECISION);
-
 		} else {
-			if(this->frames_since_event_started >= (MAX_FRAMES_FOR_COLLECTION - 1)) {
-				StringMessage msg;
-				msg.MsgType = MessageType::DETECTION_FAILURE;
-				CommandManager::GetCM().SubmitMessage(msg);
-
-				// Store last image as capture
-				this->event_state.detection_event = found_qr;
-
-				this->TransitionTo(CameraState::WAITING_FOR_DECISION);
-			} else {
-				this->frames_since_event_started = this->frames_since_event_started + 1;
-			}
+			this->frames_since_event_started = this->frames_since_event_started + 1;
 		}
 	}
-    
-	if (color_image != nullptr) k4a_image_release(color_image);
-	if (depth_image != nullptr) k4a_image_release(depth_image);
 }

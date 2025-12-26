@@ -14,18 +14,15 @@
 #include "CommandReceiver.h"
 #include "Messages/BaseMessage.h"
 #include "Messages/StringMessage.h"
+#include "ICamera.h"
 
 enum class CameraState {
-  UNINITIALIZED,
-  WAITING_FOR_COLLECTION,
+	UNINITIALIZED,
+	WAITING_FOR_COLLECTION,
 	WAITING_FOR_DECISION,
 	COLLECTION_FINISHED,
 	INITIALIZING,
-	DEVICE_OPEN,
-	STARTING_CAMERAS,
 	STREAMING,
-	CAPTURE_TIMEOUT,
-	HEALTH_CHECK,
 	DISCONNECTED,
 	RECONNECTING,
 	WAITING_FOR_DEVICE,
@@ -47,12 +44,11 @@ using state_callback_t = std::function<void(CameraState, CameraState)>;
 
 class CameraManager : public CommandReceiver {
 public:
-	CameraManager(uint32_t camera_idx = 0, bool enable_depth = false, bool enable_gui_preview = false)
+	CameraManager(bool enable_gui_preview = false, bool simulation_mode = false)
 		: CommandReceiver()
-		, camera_idx(camera_idx)
-		, enable_depth(enable_depth)
 		, current_state(CameraState::UNINITIALIZED)
 		, gui_enabled(enable_gui_preview)
+		, is_simulated(simulation_mode)
 	{
 		CommandManager::GetCM().Register("CameraManager", this);
 	}
@@ -76,6 +72,7 @@ public:
 private:
 	// State machine
 	std::atomic<CameraState> current_state;
+	std::unique_ptr<ICamera> current_camera;
 	void TransitionTo(CameraState new_state);
 	void RunStateMachine();
     
@@ -85,11 +82,7 @@ private:
 	void HandleCollectionFinished();
 	void HandleWaitingForDecision();
 	void HandleInitializing();
-	void HandleDeviceOpen();
-	void HandleStartingCameras();
 	void HandleStreaming();
-	void HandleCaptureTimeout();
-	void HandleHealthCheck();
 	void HandleDisconnected();
 	void HandleReconnecting();
 	void HandleWaitingForDevice();
@@ -116,28 +109,17 @@ private:
 	void SendThumnail(const EncodedImage&);
 	
 	// Capture handling
-	void HandleCapture(k4a_capture_t* cap);
-	QRDetection LookForQR(k4a_image_t* img);
+	void HandleCapture(std::pair<EncodedImage, EncodedImage> cap);
+	QRDetection LookForQR(const EncodedImage& img);
 
 	// Event state
 	CollectionEventState event_state;
     
-	// Configuration
-	uint32_t camera_idx;
-	bool enable_depth;
-	k4a_device_t current_device = nullptr;
-	k4a_device_configuration_t device_config;
-    
 	// State tracking
-	int consecutive_timeouts = 0;
 	int reconnect_attempts = 0;
-	int device_enum_attempts = 0;
-	std::chrono::steady_clock::time_point last_reconnect_fail_time;
     
 	// Limits
-	static constexpr int MAX_TIMEOUTS = 5;
 	static constexpr int MAX_RECONNECT_ATTEMPTS = 10;
-	static constexpr int MAX_ENUM_ATTEMPTS = 20;
 	static constexpr int RECONNECT_COOLDOWN_SEC = 5;
 	static constexpr int MAX_FRAMES_FOR_COLLECTION = 15;
     
@@ -148,6 +130,9 @@ private:
 	std::atomic<bool> close_flag{false};
 	std::thread state_machine_thread;
 	std::atomic<int> frames_since_event_started = { 0 };
+
+	// Simulation mode
+	bool is_simulated = false;
 
 	// GUI Stuff
 	bool gui_enabled = false;

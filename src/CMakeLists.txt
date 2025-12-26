@@ -11,5 +11,8 @@ set(SOURCES
     ${CMAKE_CURRENT_SOURCE_DIR}/CommandReceiver.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/Messages/BaseMessage.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/USBDownload.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/ICamera.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/SimulatedCamera.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/KinectCamera.cpp
     PARENT_SCOPE
 )
