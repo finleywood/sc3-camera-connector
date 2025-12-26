@@ -14,7 +14,6 @@ add_subdirectory(src)
 find_package(k4a REQUIRED)
 find_package(OpenCV REQUIRED)
 find_package(CURL REQUIRED)
-pkg_check_modules(UDEV REQUIRED libudev)
 
 # Add your source files
 add_executable(${PROJECT_NAME} ${SOURCES} ${HEADERS})
@@ -23,7 +22,7 @@ add_library(miniz STATIC src/miniz/miniz.c)
 
 target_include_directories(miniz PUBLIC include/miniz)
 
-target_link_libraries(${PROJECT_NAME} PRIVATE k4a::k4a ${OpenCV_LIBS} CURL::libcurl ${UDEV_LIBRARIES})
+target_link_libraries(${PROJECT_NAME} PRIVATE k4a::k4a ${OpenCV_LIBS} CURL::libcurl)
 
 target_include_directories(${PROJECT_NAME} PRIVATE include)
 
@@ -61,7 +60,7 @@ set(CPACK_DEBIAN_PACKAGE_CONTROL_EXTRA
     "${CMAKE_SOURCE_DIR}/debian/postinst"
 )
 
-set(CPACK_DEBIAN_PACKAGE_DEPENDS "libk4a1.4 (>=1.4), libcurl4t64 (>= 8), libudev1 (>= 250), libopencv-core410 (>= 4.10), libopencv-highgui410 (>= 4.10), libopencv-imgcodecs410 (>= 4.10), libopencv-objdetect410 (>= 4.10), libopencv-imgproc410 (>= 4.10)")
+set(CPACK_DEBIAN_PACKAGE_DEPENDS "libk4a1.4 (>=1.4), libcurl4t64 (>= 8), libopencv-core410 (>= 4.10), libopencv-highgui410 (>= 4.10), libopencv-imgcodecs410 (>= 4.10), libopencv-objdetect410 (>= 4.10), libopencv-imgproc410 (>= 4.10)")
 
 # Optional: architecture override (auto-detects otherwise)
 # set(CPACK_DEBIAN_PACKAGE_ARCHITECTURE "amd64")

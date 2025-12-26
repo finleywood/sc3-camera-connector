@@ -72,7 +72,7 @@ WriteablePart USBDownload::getUSBDevice() {
 
 WriteablePart& USBDownload::getMountPoint(WriteablePart& wp) {
   if(!wp.valid()) return wp;
-  std::string cmd = std::string("/bin/lsblk -o MOUNTPOINT ") + wp.devicePath; 
+  std::string cmd = std::string("/bin/lsblk -n -o MOUNTPOINT ") + wp.devicePath; 
   std::string cur_mnt_pt = getCmdOutput(cmd, true);
   if(cur_mnt_pt.empty()) {
     // Doesn't exist, need to make one
@@ -143,6 +143,11 @@ bool USBDownload::SaveDetection(QRDetection& qr_det) {
     return false;
   }
 
+  if (!mz_zip_writer_finalize_archive(&zip)) {
+    LOG(WARNING) << "Failed to finalize zip archive.";
+    return false;
+  }
+
   mz_zip_writer_end(&zip);
 
   return true;
@@ -159,5 +164,5 @@ std::string USBDownload::generateOutputPath(const WriteablePart& wp, const QRDet
 
   std::string cmd = std::string("mkdir -p ") + out_path_dir;
   getCmdOutput(cmd, true);
-  return out_path_dir + std::string("/") + qr.identifier + std::string(".zip");
+  return out_path_dir + std::string("/") + qr.identifier + std::string("_") + std::to_string(qr.event_time) + std::string(".zip");
 }

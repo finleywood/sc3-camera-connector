@@ -22,6 +22,14 @@ public:
     LOG(INFO) << "USB Store Started, registered device path: " << wp.devicePath.c_str() << " Mount point: " << wp.mountPoint.c_str() << std::endl;
   }
 
+  ~USBDownload() {
+    if(!wp.valid()) return;
+
+    // Attempt to unmount and close
+    std::string umount_cmd = std::string("umount ") + wp.devicePath;
+    getCmdOutput(umount_cmd, true);
+  }
+
   bool SaveDetection(QRDetection&);
 private:
   WriteablePart wp;
