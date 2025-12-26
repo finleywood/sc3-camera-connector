@@ -32,6 +32,8 @@ enum class MessageType {
 	USB_LIST,
 	USB_DEV,
 	USB_SET,
+	CTRL_SHUTDOWN,
+	CTRL_RESTART,
 	UNKNOWN
 };
 
@@ -53,6 +55,8 @@ static std::map<MessageType, const char*> MessageTypeMap = {
 	{MessageType::USB_LIST, "USB_LIST"},
 	{MessageType::USB_DEV, "USB_DEV"},
 	{MessageType::USB_SET, "USB_SET"},
+	{MessageType::CTRL_SHUTDOWN, "CTRL_SHUTDOWN"},
+	{MessageType::CTRL_RESTART, "CTRL_RESTART"},
 	{MessageType::UNKNOWN, "UNKNOWN"}
 };
 

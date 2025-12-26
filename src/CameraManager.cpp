@@ -13,6 +13,10 @@
 #include "UUIDV4.h"
 #include "SimulatedCamera.h"
 #include "KinectCamera.h"
+#include "WeightExporter.h"
+#include <json/json.hpp>
+
+using json = nlohmann::json;
 
 // Define static constexpr members
 constexpr int CameraManager::MAX_RECONNECT_ATTEMPTS;
@@ -466,13 +470,18 @@ void CameraManager::HandleCapture(std::pair<EncodedImage, EncodedImage> cap) {
 	found_qr.rgb_img = std::move(cap.first);
 	found_qr.depth_image = std::move(cap.second);
 
-	if(!found_qr.identifier.empty()) {            
+	if(!found_qr.identifier.empty()) {         
+		// Get weight
+		this->event_state.detection_event.weight = WeightExporter::read_weight_grams();   
 		CommandManager& cm = CommandManager::GetCM();
 
 		// Then let the ui know
 		StringMessage notify_msg;
 		notify_msg.MsgType = MessageType::COLLECTION_SUCCESS;
-		notify_msg.content = this->event_state.detection_event.identifier;
+		json content_obj;
+		content_obj["id"] = this->event_state.detection_event.identifier;
+		content_obj["weight"] = this->event_state.detection_event.weight;
+		notify_msg.content = content_obj.dump();
 		cm.SubmitMessage(notify_msg);
 
 		this->event_state.detection_event = found_qr;
@@ -481,7 +490,12 @@ void CameraManager::HandleCapture(std::pair<EncodedImage, EncodedImage> cap) {
 
 	} else {
 		if(this->frames_since_event_started >= (MAX_FRAMES_FOR_COLLECTION - 1)) {
+			// Get weight
+			this->event_state.detection_event.weight = WeightExporter::read_weight_grams();
 			StringMessage msg;
+			json content_obj;
+			content_obj["weight"] = this->event_state.detection_event.weight;
+			msg.content = content_obj.dump();
 			msg.MsgType = MessageType::DETECTION_FAILURE;
 			CommandManager::GetCM().SubmitMessage(msg);
 

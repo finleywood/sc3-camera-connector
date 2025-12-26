@@ -31,55 +31,22 @@ std::string unixTimestampToDateString(uint64_t timestamp)
     return std::string(buffer);
 }
 
-std::string USBDownload::getCmdOutput(std::string cmd, bool remove_whitespace, int* rt_code) {
-  FILE* proc = popen(cmd.c_str(), "r");
-  if(!proc) return "";
-
-  char buffer[256];
-  std::string result;
-
-  
-  if(fgets(buffer, sizeof(buffer), proc)) {
-    result = buffer;
-    if(remove_whitespace) {
-      result.erase(result.find_last_not_of(" \n\r\t") + 1);
-    }
-  }
-
-  LOG(INFO) << "Ran command: " << cmd.c_str() << " and got output: " << result.c_str() << std::endl;
-
-  int status = pclose(proc);
-  if(rt_code != nullptr) {
-    if(status != -1) {
-       if(WIFEXITED(status)) {
-          *rt_code = WEXITSTATUS(status);
-       } else {
-          *rt_code = -1;
-       }
-    } else {
-      *rt_code = -1;
-    }
-  }
-  
-  return result;
-}
-
 WriteablePart USBDownload::getUSBDevice() {
  WriteablePart wp_res;
- wp_res.devicePath = getCmdOutput("/sbin/blkid -o device -t TYPE=vfat /dev/sd*", true);
+ wp_res.devicePath = Util::getCmdOutput("/sbin/blkid -o device -t TYPE=vfat /dev/sd*", true, nullptr, CMD_TIMEOUT);
  return wp_res;
 }
 
 WriteablePart& USBDownload::getMountPoint(WriteablePart& wp) {
   if(!wp.valid()) return wp;
   std::string cmd = std::string("/bin/lsblk -n -o MOUNTPOINT ") + wp.devicePath; 
-  std::string cur_mnt_pt = getCmdOutput(cmd, true);
+  std::string cur_mnt_pt = Util::getCmdOutput(cmd, true, nullptr, CMD_TIMEOUT);
   if(cur_mnt_pt.empty()) {
     // Doesn't exist, need to make one
     std::string proposed_mnt = generateMountPoint(wp);
     // Ensure folder exists
     cmd = std::string("mkdir -p ") + proposed_mnt;
-    getCmdOutput(cmd, true);
+    Util::getCmdOutput(cmd, true, nullptr, CMD_TIMEOUT);
     // Now ensure mounted
     wp.mountPoint = proposed_mnt;
     bool could_mount = ensureMounted(wp);
@@ -102,9 +69,9 @@ std::string USBDownload::generateMountPoint(const WriteablePart& wp) {
 bool USBDownload::ensureMounted(const WriteablePart& wp) {
   if(wp.devicePath.empty() || wp.mountPoint.empty()) return false;
 
-  std::string cmd = std::string("/bin/mount ") + wp.devicePath + std::string(" ") + wp.mountPoint;
+  std::string cmd = std::string("sudo /bin/mount ") + wp.devicePath + std::string(" ") + wp.mountPoint;
   int ret_code = -1; 
-  getCmdOutput(cmd, true, &ret_code); 
+  Util::getCmdOutput(cmd, true, &ret_code, CMD_TIMEOUT); 
   return ret_code == 0;
 }
 
@@ -163,6 +130,6 @@ std::string USBDownload::generateOutputPath(const WriteablePart& wp, const QRDet
   // ensure dir exists
 
   std::string cmd = std::string("mkdir -p ") + out_path_dir;
-  getCmdOutput(cmd, true);
+  Util::getCmdOutput(cmd, true, nullptr, CMD_TIMEOUT);
   return out_path_dir + std::string("/") + qr.identifier + std::string("_") + std::to_string(qr.event_time) + std::string(".zip");
 }

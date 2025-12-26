@@ -6,6 +6,9 @@
 #include <stdio.h>
 
 #include "QRDetection.h"
+#include "Util.h"
+
+#define CMD_TIMEOUT (5000)
 
 struct WriteablePart {
   std::string partType = "vfat";
@@ -26,8 +29,8 @@ public:
     if(!wp.valid()) return;
 
     // Attempt to unmount and close
-    std::string umount_cmd = std::string("umount ") + wp.devicePath;
-    getCmdOutput(umount_cmd, true);
+    std::string umount_cmd = std::string("sudo umount ") + wp.devicePath;
+    Util::getCmdOutput(umount_cmd, false, nullptr, CMD_TIMEOUT);
   }
 
   bool SaveDetection(QRDetection&);

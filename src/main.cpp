@@ -3,6 +3,7 @@
 #include <iostream>
 #include <string>
 #include <cstdlib>
+#include <csignal>
 #include "CameraManager.h"
 #include "UploadQueue.h"
 #include "HttpTransport.h"
@@ -11,6 +12,9 @@
 #include "ApplicationConfig.h"
 #include "UINotifier.h"
 #include "USBDownload.h"
+#include "Overwatch.h"
+
+static Overwatch* ow;
 
 static json app_config;
 
@@ -100,6 +104,19 @@ void printHelp() {
 						<< std::endl;
 }
 
+void signalHandler(int signalNum) {
+    LOG(INFO) << "Interrupt signal (" << signalNum << ") received." << std::endl;
+
+	// Ask overwatch to stop services for graceful shutdown
+	ow->Stop();
+
+	// delete ow for good meaure
+	delete ow;
+
+    LOG(INFO) << "Exiting..." << std::endl;
+    std::exit(signalNum);
+}
+
 int main(int argc, char** argv)
 {
 	Args args = parseArgs(argc, argv);
@@ -113,25 +130,21 @@ int main(int argc, char** argv)
 	// Get app config
 	app_config = get_app_config(args.has_config ? args.config : SC3_CONFIG_PATH);
 
+	// Get specific params
 	std::string server_url = app_config["server_url"];
 	bool enable_http = app_config["enable_http_upload"];
 	bool enable_usb = app_config["enable_usb_download"];
-	// Start upload queue
-	UploadQueue upload_queue(new HttpTransport(server_url), 3, 3, enable_http, enable_usb);
-	upload_queue.Start();
-
 	std::string socket_path = app_config["ui_socket_path"];
-	UINotifier ui_notifier(socket_path);
-	ui_notifier.Start();
 
-	CameraManager camera_manager(args.show_gui, args.simulation_mode);
-	bool status = camera_manager.Start(true);
+	// Register signal handlers
+	std::signal(SIGINT, signalHandler);
+	std::signal(SIGTERM, signalHandler);
 
-	camera_manager.Stop();
-	// Stop upload queue & ui notifier if camera manager stops
-	ui_notifier.Stop();
-	upload_queue.Stop();
-	return status ? 0 : -1;
+	ow = new Overwatch(new CameraManager(args.show_gui, args.simulation_mode), new UINotifier(socket_path), new UploadQueue(new HttpTransport(server_url), 3, 3, enable_http, enable_usb));
+	ow->Start();
+
+	if(ow != nullptr)
+		delete ow;
+
+	return 0;
 }
-
-//TODO: Graceful shutdown

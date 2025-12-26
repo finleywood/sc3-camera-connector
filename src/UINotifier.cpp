@@ -402,6 +402,8 @@ void UINotifier::ProcessClientMessage(std::string msg)
 	case MessageType::COLLECTION_REJECT:
   	case MessageType::START_UPLOAD:
 	case MessageType::COLLECTION_THUMBNAIL_REQUEST:
+	case MessageType::CTRL_SHUTDOWN:
+	case MessageType::CTRL_RESTART:
 		this->SendStringMsg(msg_type_enum, msg_body);
 		break;
 	default:
