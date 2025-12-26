@@ -48,12 +48,12 @@ void Overwatch::ShutdownServices() {
 
 void Overwatch::HandleShutdown() {
     this->ShutdownServices();
-    Util::getCmdOutput("sudo shutdown now", false);
+    Util::getCmdOutput("sudo /sbin/shutdown now", false);
 }
 
 void Overwatch::HandleRestart() {
     this->ShutdownServices();
-    Util::getCmdOutput("sudo restart", false);
+    Util::getCmdOutput("sudo /sbin/reboot", false);
 }
 
 void Overwatch::Start() {
