@@ -76,7 +76,7 @@ bool HttpTransport::UploadQueueItem(UploadItem item)
     return rgb_success;
 }
 
-std::string HttpTransport::InitMetadata(std::string uid, std::string identifier, uint64_t event_time)
+std::string HttpTransport::InitMetadata(std::string uid, int identifier, uint64_t event_time)
 {
     CURL *curl;
     CURLcode res;
@@ -91,7 +91,7 @@ std::string HttpTransport::InitMetadata(std::string uid, std::string identifier,
         return "";
     
     json data_to_send;
-    data_to_send["identifier"] = identifier.c_str();
+    data_to_send["identifier"] = identifier;
     data_to_send["event_time"] = event_time;
     data_to_send["uid"] = uid.c_str();
 
