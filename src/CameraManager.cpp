@@ -107,7 +107,12 @@ void CameraManager::ProcessStartUpload(const StringMessage &msg)
     return;
 
   if (!msg.content.empty()) {
-    this->event_state.detection_event.identifier = msg.content;
+	try {
+    	int indentifier_as_num = std::stoi(msg.content);
+		this->event_state.detection_event.identifier = indentifier_as_num;
+	} catch(std::exception& e) {
+		LOG(WARNING) << "Provided intentifier " << msg.content.c_str() << " not accepted, as not a valid integer." << std::endl;;
+	}
   }
 
   EventMessage q_msg;
@@ -416,10 +421,17 @@ QRDetection CameraManager::LookForQR(const EncodedImage& img) {
 	std::vector<cv::Point> qr_detections;
 	try {
 		std::string found_data = cv_qr.detectAndDecode(cv_mat_img, qr_detections);
-		if (!found_data.empty()) {
+		int id_as_int = -1;
+		try {
+			id_as_int = std::stoi(found_data);
+		} catch(std::exception& e) {
+			LOG(WARNING) << "Found identifier was not a valid int." << std::endl;
+		}
+
+		if (id_as_int >= 0) {
 			LOG(DEBUG) << "Detector detected and decoded a QR." << std::endl;
 			QRDetection found_qr;
-			found_qr.identifier = found_data;
+			found_qr.identifier = id_as_int;
 			return found_qr;
 		}
 		return {};
@@ -470,7 +482,7 @@ void CameraManager::HandleCapture(std::pair<EncodedImage, EncodedImage> cap) {
 	found_qr.rgb_img = std::move(cap.first);
 	found_qr.depth_image = std::move(cap.second);
 
-	if(!found_qr.identifier.empty()) {         
+	if(found_qr.identifier >= 0) {         
 		// Get weight
 		this->event_state.detection_event.weight = WeightExporter::read_weight_grams();   
 		CommandManager& cm = CommandManager::GetCM();

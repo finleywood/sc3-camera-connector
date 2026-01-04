@@ -76,13 +76,13 @@ bool USBDownload::ensureMounted(const WriteablePart& wp) {
 }
 
 bool USBDownload::SaveDetection(QRDetection& qr_det) {
-  if(!qr_det.valid() || !this->wp.valid()) return false;
+  if(!qr_det.valid() || !wp.valid()) return false;
   
   // Construct output 
   json output_obj;
   output_obj["patient_id"] = qr_det.identifier;
   output_obj["datetime"] = qr_det.event_time;
-  output_obj["weight"] = 0.0f;
+  output_obj["weight"] = qr_det.weight;
 
   // Construct zip in memory
 
@@ -94,18 +94,18 @@ bool USBDownload::SaveDetection(QRDetection& qr_det) {
     return false;
   }
   
-  if(!mz_zip_writer_add_mem(&zip, "rgb.jpg", qr_det.rgb_img.data.get(), qr_det.rgb_img.size, MZ_BEST_COMPRESSION)) {
+  if(!mz_zip_writer_add_mem(&zip, "snapshot/rgb.jpeg", qr_det.rgb_img.data.get(), qr_det.rgb_img.size, MZ_BEST_COMPRESSION)) {
     LOG(WARNING) << "Could not add rgb image to zip file." << std::endl;
     return false;
   }
 
-  if(!mz_zip_writer_add_mem(&zip, "depth.png", qr_det.depth_image.data.get(), qr_det.depth_image.size, MZ_BEST_COMPRESSION)) {
+  if(!mz_zip_writer_add_mem(&zip, "snapshot/depth.png", qr_det.depth_image.data.get(), qr_det.depth_image.size, MZ_BEST_COMPRESSION)) {
     LOG(WARNING) << "Could not add depth to zip file." << std::endl;
     return false;
   }
 
   std::string manifest_str = output_obj.dump();
-  if(!mz_zip_writer_add_mem(&zip, "manifest.json", manifest_str.data(), manifest_str.size(), MZ_BEST_COMPRESSION)) {
+  if(!mz_zip_writer_add_mem(&zip, "snapshot/metadata.json", manifest_str.data(), manifest_str.size(), MZ_BEST_COMPRESSION)) {
     LOG(WARNING) << "Could not add manifest zip file." << std::endl;
     return false;
   }
@@ -131,5 +131,5 @@ std::string USBDownload::generateOutputPath(const WriteablePart& wp, const QRDet
 
   std::string cmd = std::string("mkdir -p ") + out_path_dir;
   Util::getCmdOutput(cmd, true, nullptr, CMD_TIMEOUT);
-  return out_path_dir + std::string("/") + qr.identifier + std::string("_") + std::to_string(qr.event_time) + std::string(".zip");
+  return out_path_dir + std::string("/") + std::to_string(qr.identifier) + std::string("_") + std::to_string(qr.event_time) + std::string(".zip");
 }

@@ -14,7 +14,7 @@ public:
 private:
     std::string server_url;
 
-    std::string InitMetadata(std::string, std::string, uint64_t);
+    std::string InitMetadata(std::string, int, uint64_t);
     bool UploadRGB(std::string, uint8_t*, size_t);
     bool UploadDepth(std::string, uint8_t*, size_t);
     bool PutBin(std::string, bool, uint8_t*, size_t);
