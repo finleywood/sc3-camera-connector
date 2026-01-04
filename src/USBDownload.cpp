@@ -1,47 +1,135 @@
 #include "USBDownload.h"
-#include "Messages/StringMessage.h"
-#include <chrono>
+#include <json/json.hpp>
+#include <ctime>
+#include <cstdio>
 
-bool USBDownload::AllowMessage(MessageType msg_type)
-{
-    switch(msg_type) {
-        case MessageType::USB_DOWNLOAD:
-        case MessageType::USB_LIST:
-            return true;
-            break;
-        default:
-            return false;
-            break;
-    }
+extern "C" {
+
+#include <miniz/miniz.h>
+
 }
 
-void USBDownload::ProcessMessage(const BaseMessage& msg)
+using json = nlohmann::json;
+
+std::string unixTimestampToDateString(uint64_t timestamp)
 {
-    switch(msg.MsgType) {
-        case MessageType::USB_DOWNLOAD:
-            this->HandleUSBDownload(static_cast<const EventMessage&>(msg));
-            break;
-        case MessageType::USB_LIST:
-            this->HandleUSBList();
-            break;
-        default:
-            break;
-    }
+    time_t ts = static_cast<time_t>(timestamp);
+
+    struct tm tm {};
+    localtime_r(&ts, &tm);
+
+    char buffer[11]; // "yyyy_mm_dd" + null
+    std::snprintf(
+        buffer,
+        sizeof(buffer),
+        "%04d_%02d_%02d",
+        tm.tm_year + 1900,
+        tm.tm_mon + 1,
+        tm.tm_mday
+    );
+
+    return std::string(buffer);
 }
 
-void USBDownload::HandleUSBDownload(const EventMessage& msg)
-{
-    
+WriteablePart USBDownload::getUSBDevice() {
+ WriteablePart wp_res;
+ wp_res.devicePath = Util::getCmdOutput("/sbin/blkid -o device -t TYPE=vfat /dev/sd*", true, nullptr, CMD_TIMEOUT);
+ return wp_res;
 }
 
-void USBDownload::HandleUSBList()
-{
-    std::vector<USBDevice> usb_devices = this->udm.getAvailableDevices();
-    for(auto& dev : usb_devices) {
-        std::string msg_content = "name=" + dev.deviceName + ",path=" + dev.devicePath;
-        StringMessage dev_msg;
-        dev_msg.MsgType = MessageType::USB_DEV;
-        dev_msg.content = msg_content;
-        CommandManager::GetCM().SubmitMessage(dev_msg);
-    }
+WriteablePart& USBDownload::getMountPoint(WriteablePart& wp) {
+  if(!wp.valid()) return wp;
+  std::string cmd = std::string("/bin/lsblk -n -o MOUNTPOINT ") + wp.devicePath; 
+  std::string cur_mnt_pt = Util::getCmdOutput(cmd, true, nullptr, CMD_TIMEOUT);
+  if(cur_mnt_pt.empty()) {
+    // Doesn't exist, need to make one
+    std::string proposed_mnt = generateMountPoint(wp);
+    // Ensure folder exists
+    cmd = std::string("mkdir -p ") + proposed_mnt;
+    Util::getCmdOutput(cmd, true, nullptr, CMD_TIMEOUT);
+    // Now ensure mounted
+    wp.mountPoint = proposed_mnt;
+    bool could_mount = ensureMounted(wp);
+    if(!could_mount) wp.mountPoint = "";
+  } else {
+    wp.mountPoint = cur_mnt_pt;
+  }
+  return wp;
+}
+
+std::string USBDownload::generateMountPoint(const WriteablePart& wp) {
+  if(wp.devicePath.empty()) return "";
+
+  auto pos = wp.devicePath.find_last_of('/');
+  std::string last_part = (pos == std::string::npos) ? wp.devicePath : wp.devicePath.substr(pos + 1);
+  std::string mnt_path = std::string("/mnt/export_") + last_part;
+  return mnt_path;
+}
+
+bool USBDownload::ensureMounted(const WriteablePart& wp) {
+  if(wp.devicePath.empty() || wp.mountPoint.empty()) return false;
+
+  std::string cmd = std::string("sudo /bin/mount ") + wp.devicePath + std::string(" ") + wp.mountPoint;
+  int ret_code = -1; 
+  Util::getCmdOutput(cmd, true, &ret_code, CMD_TIMEOUT); 
+  return ret_code == 0;
+}
+
+bool USBDownload::SaveDetection(QRDetection& qr_det) {
+  if(!qr_det.valid() || !this->wp.valid()) return false;
+  
+  // Construct output 
+  json output_obj;
+  output_obj["patient_id"] = qr_det.identifier;
+  output_obj["datetime"] = qr_det.event_time;
+  output_obj["weight"] = 0.0f;
+
+  // Construct zip in memory
+
+  mz_zip_archive zip;
+  memset(&zip, 0, sizeof(zip));
+  std::string out_name = generateOutputPath(this->wp, qr_det);
+  if(!mz_zip_writer_init_file(&zip, out_name.c_str(), 0)) {
+    LOG(INFO) << "Was unable to create zip buffer." << std::endl;
+    return false;
+  }
+  
+  if(!mz_zip_writer_add_mem(&zip, "rgb.jpg", qr_det.rgb_img.data.get(), qr_det.rgb_img.size, MZ_BEST_COMPRESSION)) {
+    LOG(WARNING) << "Could not add rgb image to zip file." << std::endl;
+    return false;
+  }
+
+  if(!mz_zip_writer_add_mem(&zip, "depth.png", qr_det.depth_image.data.get(), qr_det.depth_image.size, MZ_BEST_COMPRESSION)) {
+    LOG(WARNING) << "Could not add depth to zip file." << std::endl;
+    return false;
+  }
+
+  std::string manifest_str = output_obj.dump();
+  if(!mz_zip_writer_add_mem(&zip, "manifest.json", manifest_str.data(), manifest_str.size(), MZ_BEST_COMPRESSION)) {
+    LOG(WARNING) << "Could not add manifest zip file." << std::endl;
+    return false;
+  }
+
+  if (!mz_zip_writer_finalize_archive(&zip)) {
+    LOG(WARNING) << "Failed to finalize zip archive.";
+    return false;
+  }
+
+  mz_zip_writer_end(&zip);
+
+  return true;
+}
+
+std::string USBDownload::generateOutputPath(const WriteablePart& wp, const QRDetection& qr) {
+  if(wp.mountPoint.empty()) return "";
+
+  std::string date_str = unixTimestampToDateString(qr.event_time);
+  if(date_str.empty()) return "";
+
+  std::string out_path_dir = wp.mountPoint + std::string("/") + date_str;
+  // ensure dir exists
+
+  std::string cmd = std::string("mkdir -p ") + out_path_dir;
+  Util::getCmdOutput(cmd, true, nullptr, CMD_TIMEOUT);
+  return out_path_dir + std::string("/") + qr.identifier + std::string("_") + std::to_string(qr.event_time) + std::string(".zip");
 }

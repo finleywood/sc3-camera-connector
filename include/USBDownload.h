@@ -1,36 +1,46 @@
 #pragma once
 
-#include <thread>
-#include <atomic>
 #include <aixlog/aixlog.hpp>
+#include <vector>
+#include <string>
+#include <stdio.h>
 
-#include "USBDeviceManager.h"
-#include "CommandManager.h"
-#include "CommandReceiver.h"
-#include "MessageTypes.h"
-#include "Messages/BaseMessage.h"
-#include "Messages/EventMessage.h"
+#include "QRDetection.h"
+#include "Util.h"
 
-class USBDownload : public CommandReceiver {
+#define CMD_TIMEOUT (5000)
+
+struct WriteablePart {
+  std::string partType = "vfat";
+  std::string devicePath;
+  std::string mountPoint;
+  bool valid() { return !(devicePath.empty() && mountPoint.empty()); };
+};
+
+class USBDownload {
 public:
-    USBDownload()
-        : CommandReceiver()
-        {
-            CommandManager::GetCM().Register("USBDownload", this);
-            this->udm.startMonitoring([](const std::vector<USBDevice>& devices) {
-                LOG(INFO) << "USB devices changed. Available devices:\n";
-                for (const auto& device : devices) {
-                    LOG(INFO) << "  - " << device.deviceName << " (" << device.devicePath << ")\n";
-                }
-            });
-        }
+  USBDownload() {
+    this->wp = getUSBDevice();
+    getMountPoint(this->wp);
+    LOG(INFO) << "USB Store Started, registered device path: " << wp.devicePath.c_str() << " Mount point: " << wp.mountPoint.c_str() << std::endl;
+  }
 
-    virtual bool AllowMessage(MessageType) override;
-    virtual void ProcessMessage(const BaseMessage&) override;
+  ~USBDownload() {
+    if(!wp.valid()) return;
 
+    // Attempt to unmount and close
+    std::string umount_cmd = std::string("sudo umount ") + wp.devicePath;
+    Util::getCmdOutput(umount_cmd, false, nullptr, CMD_TIMEOUT);
+  }
+
+  bool SaveDetection(QRDetection&);
 private:
-    USBDeviceManager udm;
+  WriteablePart wp;
 
-    void HandleUSBDownload(const EventMessage&);
-    void HandleUSBList();
+  std::string getCmdOutput(std::string, bool, int* = nullptr);
+  WriteablePart getUSBDevice();
+  WriteablePart& getMountPoint(WriteablePart&);
+  bool ensureMounted(const WriteablePart&);
+  std::string generateMountPoint(const WriteablePart&);
+  std::string generateOutputPath(const WriteablePart&, const QRDetection&);
 };

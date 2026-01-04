@@ -10,7 +10,11 @@ set(SOURCES
     ${CMAKE_CURRENT_SOURCE_DIR}/CommandManager.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/CommandReceiver.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/Messages/BaseMessage.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/USBDeviceManager.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/USBDownload.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/ICamera.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/SimulatedCamera.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/KinectCamera.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/WeightExporter.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/Overwatch.cpp
     PARENT_SCOPE
 )

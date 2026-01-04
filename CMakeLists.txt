@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.5.0)
 
-project(SC3-Camera-Connector VERSION 1.0 LANGUAGES CXX)
+project(SC3-Camera-Connector VERSION 1.0 LANGUAGES C CXX)
 
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
@@ -14,14 +14,29 @@ add_subdirectory(src)
 find_package(k4a REQUIRED)
 find_package(OpenCV REQUIRED)
 find_package(CURL REQUIRED)
-pkg_check_modules(UDEV REQUIRED libudev)
+
+find_path(GPIOD_INCLUDE_DIR gpiod.h)
+find_library(GPIOD_LIBRARY gpiod)
+
+if(NOT GPIOD_INCLUDE_DIR OR NOT GPIOD_LIBRARY)
+    message(FATAL_ERROR "libgpiod not found. Please install libgpiod-dev.")
+endif()
+
+message(STATUS "libgpiod include: ${GPIOD_INCLUDE_DIR}")
+message(STATUS "libgpiod library: ${GPIOD_LIBRARY}")
 
 # Add your source files
 add_executable(${PROJECT_NAME} ${SOURCES} ${HEADERS})
 
-target_link_libraries(${PROJECT_NAME} PRIVATE k4a::k4a ${OpenCV_LIBS} CURL::libcurl ${UDEV_LIBRARIES})
+add_library(miniz STATIC src/miniz/miniz.c)
 
-target_include_directories(${PROJECT_NAME} PRIVATE include)
+target_include_directories(miniz PUBLIC include/miniz)
+
+target_link_libraries(${PROJECT_NAME} PRIVATE k4a::k4a ${OpenCV_LIBS} CURL::libcurl ${GPIOD_LIBRARY})
+
+target_include_directories(${PROJECT_NAME} PRIVATE include ${GPIOD_INCLUDE_DIR})
+
+target_link_libraries(${PROJECT_NAME} PRIVATE miniz)
 
 install(TARGETS ${PROJECT_NAME}
     RUNTIME DESTINATION bin
@@ -29,6 +44,14 @@ install(TARGETS ${PROJECT_NAME}
 
 install(FILES ./auxiliary/config.json
 		DESTINATION /etc/sc3
+)
+
+install(FILES ./auxiliary/99-k4a.rules
+        DESTINATION /etc/udev/rules.d        
+)
+
+install(FILES ./auxiliary/sc3
+        DESTINATION /etc/sudoers.d      
 )
 
 install(FILES ./auxiliary/sc3-camera-connector.service
@@ -55,7 +78,7 @@ set(CPACK_DEBIAN_PACKAGE_CONTROL_EXTRA
     "${CMAKE_SOURCE_DIR}/debian/postinst"
 )
 
-set(CPACK_DEBIAN_PACKAGE_DEPENDS "libk4a1.4 (>=1.4), libcurl4t64 (>= 8), libudev1 (>= 250), libopencv-core410 (>= 4.10), libopencv-highgui410 (>= 4.10), libopencv-imgcodecs410 (>= 4.10), libopencv-objdetect410 (>= 4.10), libopencv-imgproc410 (>= 4.10)")
+set(CPACK_DEBIAN_PACKAGE_DEPENDS "libk4a1.4 (>=1.4), libcurl4t64 (>= 8), libgpiod3 (>= 2.2.1), libopencv-core410 (>= 4.10), libopencv-highgui410 (>= 4.10), libopencv-imgcodecs410 (>= 4.10), libopencv-objdetect410 (>= 4.10), libopencv-imgproc410 (>= 4.10)")
 
 # Optional: architecture override (auto-detects otherwise)
 # set(CPACK_DEBIAN_PACKAGE_ARCHITECTURE "amd64")

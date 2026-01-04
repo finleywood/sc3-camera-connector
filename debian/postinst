@@ -8,6 +8,9 @@ echo "Creating user and group"
 
 useradd -r -s /usr/sbin/nologin sc3
 
+echo "Reloading udev rules"
+udevadm control --reload
+
 echo "Enabling and running systemd service"
 
 systemctl daemon-reload
