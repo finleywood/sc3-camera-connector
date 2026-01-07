@@ -37,12 +37,12 @@ jobs:
       - name: Mark repo as safe
         run: git config --global --add safe.directory "$GITHUB_WORKSPACE"
       - name: build
-        run: docker run --rm \
-          --user $(id -u):$(id -g) \
-          --platform linux/arm64 \
-          -v $PWD:/src \
-          -w /src \
-          ghcr.io/finleywood/sc3-camera-connector/builder-arm:latest \
+        run: docker run --rm
+          --user $(id -u):$(id -g)
+          --platform linux/arm64
+          -v $PWD:/src
+          -w /src
+          ghcr.io/finleywood/sc3-camera-connector/builder-arm:latest
           bash -c "mkdir build && cd build && cmake .. && make -j$(nproc) && make package"
       - name: store-artifacts
         uses: actions/upload-artifact@v4
