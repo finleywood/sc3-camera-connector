@@ -29,8 +29,6 @@ jobs:
   
   build-debian-13-arm64:
     runs-on: self-hosted
-    container:
-      image: ghcr.io/finleywood/sc3-camera-connector/builder-arm:latest
     steps:
       - name: checkout-repo
         uses: actions/checkout@v5
