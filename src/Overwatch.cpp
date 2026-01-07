@@ -4,6 +4,8 @@
 #include <chrono>
 #include <thread>
 
+#include <aixlog/aixlog.hpp>
+
 #include "Util.h"
 
 bool Overwatch::AllowMessage(MessageType msg_type) {
@@ -56,11 +58,11 @@ void Overwatch::HandleRestart() {
     Util::getCmdOutput("sudo /sbin/reboot", false);
 }
 
-void Overwatch::Start() {
+void Overwatch::Start() noexcept {
     // Start services
     this->up_q->Start();
-    this->ui_notif->Start();
     this->cam_mgr->Start();
+    this->ui_notif->Start();
 
     // Infinte loop to keep application open
     while(!this->should_close.load()) {

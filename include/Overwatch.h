@@ -19,7 +19,11 @@ public:
         CommandManager::GetCM().Register("Overwatch", this);
     }
 
+<<<<<<< Updated upstream
     void Start();
+=======
+    void Start() noexcept;
+>>>>>>> Stashed changes
     void Stop();
 
     virtual bool AllowMessage(MessageType) override;

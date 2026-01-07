@@ -15,15 +15,20 @@ find_package(k4a REQUIRED)
 find_package(OpenCV REQUIRED)
 find_package(CURL REQUIRED)
 
-find_path(GPIOD_INCLUDE_DIR gpiod.h)
-find_library(GPIOD_LIBRARY gpiod)
+find_library(LGPIO NAMES lgpio PATHS /usr/lib /usr/local/lib)
+find_path(LGPIO_INCLUDE NAMES lgpio.h PATHS /usr/include /usr/local/include)
 
-if(NOT GPIOD_INCLUDE_DIR OR NOT GPIOD_LIBRARY)
-    message(FATAL_ERROR "libgpiod not found. Please install libgpiod-dev.")
+if(NOT LGPIO)
+    message(FATAL_ERROR "liblgpio not found")
+else()
+    message(STATUS "liblgpio found")
 endif()
 
-message(STATUS "libgpiod include: ${GPIOD_INCLUDE_DIR}")
-message(STATUS "libgpiod library: ${GPIOD_LIBRARY}")
+if(NOT LGPIO_INCLUDE)
+    message(FATAL_ERROR "lgpio.h not found")
+else()
+    message(STATUS "lgpio.h found")
+endif()
 
 # Add your source files
 add_executable(${PROJECT_NAME} ${SOURCES} ${HEADERS})
@@ -32,11 +37,14 @@ add_library(miniz STATIC src/miniz/miniz.c)
 
 target_include_directories(miniz PUBLIC include/miniz)
 
-target_link_libraries(${PROJECT_NAME} PRIVATE k4a::k4a ${OpenCV_LIBS} CURL::libcurl ${GPIOD_LIBRARY})
+file(GLOB HX711_SOURCES "src/hx711/*.cpp")
+add_library(hx711 STATIC ${HX711_SOURCES})
 
-target_include_directories(${PROJECT_NAME} PRIVATE include ${GPIOD_INCLUDE_DIR})
+target_include_directories(hx711 PUBLIC include/hx711)
 
-target_link_libraries(${PROJECT_NAME} PRIVATE miniz)
+target_include_directories(${PROJECT_NAME} PRIVATE include ${LGPIO_INCLUDE})
+
+target_link_libraries(${PROJECT_NAME} PRIVATE hx711 miniz k4a::k4a ${OpenCV_LIBS} CURL::libcurl ${LGPIO})
 
 install(TARGETS ${PROJECT_NAME}
     RUNTIME DESTINATION bin

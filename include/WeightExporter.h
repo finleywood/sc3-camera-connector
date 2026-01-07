@@ -24,4 +24,6 @@ private:
     static constexpr double OFFSET = -922041.33;
     static constexpr double CALIBRATION_FACTOR = -1006.033;
 
+    static double get_hx_val(int idx);
+
 };

@@ -33,7 +33,7 @@ private:
 	std::atomic<SocketStatus> current_status;
 	std::string socket_path;
 	std::thread state_machine_thread;
-  bool state_machine_close_flag;
+  	std::atomic<bool> state_machine_close_flag = { false };
 	bool start_msg_recv = false;
 	uint32_t p2_len;
 	int server_fd = -1;

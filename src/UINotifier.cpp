@@ -76,6 +76,7 @@ void UINotifier::ProcessSendStringMessage(const StringMessage& msg)
 
 bool UINotifier::Start(bool is_blocking)
 {
+	LOG(INFO) << "Starting UI Notifier." << std::endl;
 	if(this->current_status != SocketStatus::UINITIALIZED && this->current_status == SocketStatus::CLOSING) {
 		LOG(ERROR) << "Cannot start UI Notifier. Currently running." << std::endl;
 		return false;
@@ -107,8 +108,8 @@ void UINotifier::SocketStateTransitionTo(SocketStatus new_state)
 
 void UINotifier::RunSocketStateMachine()
 {
-	this->SocketStateTransitionTo(SocketStatus::UINITIALIZED);
-	while(!this->state_machine_close_flag) {
+ 	this->SocketStateTransitionTo(SocketStatus::UINITIALIZED);
+	while(!this->state_machine_close_flag.load()) {
 		SocketStatus current_state = this->current_status.load();
 		switch(current_state) {
 		case SocketStatus::UINITIALIZED:
