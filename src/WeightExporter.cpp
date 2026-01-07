@@ -1,47 +1,49 @@
 #include "WeightExporter.h"
-#include "HX711.h"
+#include "common.h"
+#include <chrono>
+#include <iomanip>
 #include <aixlog/aixlog.hpp>
+#include <thread>
+#include <array>
 
 #define HX_READ_TIMEOUT_MS (100)
 
 constexpr double WeightExporter::OFFSET;
 constexpr double WeightExporter::CALIBRATION_FACTOR;
 
+constexpr LoadCellPins WeightExporter::cells[4];
+
 double WeightExporter::read_weight_grams() {
-    HX711* hx1;
-    HX711* hx2;
-    HX711* hx3;
-    HX711* hx4;
+
+    std::array<double, 4> reads;
+
+    std::thread t1([&]{ reads[0] = get_hx_val(0); });
+    std::thread t2([&]{ reads[1] = get_hx_val(1); });
+    std::thread t3([&]{ reads[2] = get_hx_val(2); });
+    std::thread t4([&]{ reads[3] = get_hx_val(3); });
+
+    // Wait for all threads
+    t1.join();
+    t2.join();
+    t3.join();
+    t4.join();
+
+    double val = reads[0] + reads[1] + reads[2] + reads[3];
+
+    double off_val = (val - OFFSET) / CALIBRATION_FACTOR;
+    if(off_val < 0) return 0.0f;
+    else return off_val;
+}
+
+double WeightExporter::get_hx_val(int idx) {
+    HX711::SimpleHX711 hx(cells[idx].dt, cells[idx].sck);
+    hx.setUnit(HX711::Mass::Unit::G);
+    HX711::Mass mass;
     try {
-        hx1 = new HX711("/dev/gpiochip0", cells[0].dt, cells[0].sck);
-        hx2 = new HX711("/dev/gpiochip0", cells[1].dt, cells[1].sck);
-        hx3 = new HX711("/dev/gpiochip0", cells[2].dt, cells[2].sck);
-        hx4 = new HX711("/dev/gpiochip0", cells[3].dt, cells[3].sck);
+        mass = hx.weight(std::chrono::nanoseconds(500000000)); // 500ms timeout
     } catch(std::exception& e) {
-        LOG(WARNING) << "Error with opening a hx711 load cell: " << e.what() << std::endl;
-        return 0;
+        LOG(WARNING) << "Unable to obtain sample for load cell " << (idx + 1) << ", timeout reached." << std::endl;
+        return 0.0f;
     }
-
-    // Read average 5 times per sensor, as in Python
-    long raw1 = hx1->read_average_with_timeout(5, HX_READ_TIMEOUT_MS);
-    long raw2 = hx2->read_average_with_timeout(5, HX_READ_TIMEOUT_MS);
-    long raw3 = hx3->read_average_with_timeout(5, HX_READ_TIMEOUT_MS);
-    long raw4 = hx4->read_average_with_timeout(5, HX_READ_TIMEOUT_MS);
-
-    // ensure we clean up memory
-    delete hx1;
-    delete hx2;
-    delete hx3;
-    delete hx4;
-
-    long raw_total = raw1 + raw2 + raw3 + raw4;
-
-    // Apply offset and calibration factor to get weight in grams
-    double weight = (raw_total - OFFSET) / CALIBRATION_FACTOR;
-    
-    // floor at 0
-    if(weight < 0)
-        weight = 0;
-
-    return weight;
+    return mass.getValue();
 }

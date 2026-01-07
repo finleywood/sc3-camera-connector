@@ -9,6 +9,6 @@ struct QRDetection {
     EncodedImage rgb_img;
     EncodedImage depth_image;
     uint64_t event_time;
-    double weight = 0;
+    double weight = 0.0f;
     bool valid() { return rgb_img.valid() && depth_image.valid() && identifier >= 0; };
 };
