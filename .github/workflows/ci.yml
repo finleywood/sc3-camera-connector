@@ -39,11 +39,12 @@ jobs:
       - name: Mark repo as safe
         run: git config --global --add safe.directory "$GITHUB_WORKSPACE"
       - name: build
-        run: |
-          mkdir build && cd build
-          cmake ..
-          make -j$(nproc)
-          make package
+        run: docker run --rm \
+          --platform linux/arm64 \
+          -v $PWD:/src \
+          -w /src \
+          ghcr.io/finleywood/sc3-camera-connector/builder-arm:latest \
+          bash -c "mkdir build && cd build && cmake .. && make -j$(nproc) && make package"
       - name: store-artifacts
         uses: actions/upload-artifact@v4
         with:
