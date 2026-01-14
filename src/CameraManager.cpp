@@ -49,6 +49,9 @@ void CameraManager::ProcessMessage(const BaseMessage& msg)
 	case MessageType::COLLECTION_THUMBNAIL_REQUEST:
 		this->ProcessCollectionThumnailRequest(static_cast<const StringMessage &>(msg));
 		break;
+	case MessageType::COLLECTION_REJECT:
+		this->ProcessCollectionReject();
+		break;
 	default:
 		break;
 	}
