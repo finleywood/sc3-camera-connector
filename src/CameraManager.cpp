@@ -294,8 +294,7 @@ void CameraManager::HandleStreaming() {
 
 	std::pair<EncodedImage, EncodedImage> cap = this->current_camera->GetFrame();
 	if(!cap.first.valid() || !cap.second.valid()) {
-		LOG(WARNING) << "Invalid capture received, will reconnect camera." << std::endl;
-		this->TransitionTo(CameraState::RECONNECTING);
+		LOG(WARNING) << "Invalid capture received, skipping..." << std::endl;
 		return;
 	}
 	HandleCapture(cap);

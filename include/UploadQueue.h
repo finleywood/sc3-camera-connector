@@ -28,6 +28,8 @@ public:
 		CommandReceiver(),
 		max_size(max_size),
 		max_retry(max_retry),
+		http_upload_enabled(enable_http_upload),
+		usb_download_enabled(enable_usb_download),
 		transport_ptr(std::unique_ptr<UpstreamTransport> { transport })
 	{
 		CommandManager& cm = CommandManager::GetCM();
@@ -52,7 +54,7 @@ private:
 	uint8_t max_retry;
 	std::mutex q_lock;
 	std::atomic_bool should_stop;
-  bool http_upload_enabled;
+  	bool http_upload_enabled;
 	bool usb_download_enabled;
 	
 	void Enqueue(UploadItem);

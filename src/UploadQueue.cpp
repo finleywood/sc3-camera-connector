@@ -144,7 +144,7 @@ void UploadQueue::MainLoop()
 		bool final_success = upload_success;
 		// If upload wasn't successful, fallback on usb
 		if(!upload_success) {
-			LOG(INFO) << "Http upload unsuccessful, falling back to USB." << std::endl;
+			LOG(INFO) << "Http upload unsuccessful or disabled, falling back to USB." << std::endl;
 			USBDownload usb_d;
 			final_success = usb_d.SaveDetection(item.qr_det);
 			LOG(INFO) << "USB Download " <<  (final_success ? "was successful." : "failed.") << std::endl;

@@ -2,6 +2,7 @@
 #include <json/json.hpp>
 #include <ctime>
 #include <cstdio>
+#include <sys/stat.h>
 
 extern "C" {
 
@@ -46,7 +47,13 @@ WriteablePart& USBDownload::getMountPoint(WriteablePart& wp) {
     std::string proposed_mnt = generateMountPoint(wp);
     // Ensure folder exists
     cmd = std::string("mkdir -p ") + proposed_mnt;
-    Util::getCmdOutput(cmd, true, nullptr, CMD_TIMEOUT);
+    int ret1 = mkdir(proposed_mnt.c_str(), 0775);
+    // Double Ensure permissions are correct
+    int ret2 = chmod(proposed_mnt.c_str(), 0775);
+    int ret_total = ret1 + ret2;
+    if(ret_total != 0) {
+      LOG(WARNING) << "Could not create mount path " << proposed_mnt.c_str() << std::endl;
+    }
     // Now ensure mounted
     wp.mountPoint = proposed_mnt;
     bool could_mount = ensureMounted(wp);
@@ -62,14 +69,18 @@ std::string USBDownload::generateMountPoint(const WriteablePart& wp) {
 
   auto pos = wp.devicePath.find_last_of('/');
   std::string last_part = (pos == std::string::npos) ? wp.devicePath : wp.devicePath.substr(pos + 1);
-  std::string mnt_path = std::string("/mnt/export_") + last_part;
+  std::string mnt_path = std::string("/tmp/sc3_mounts/export_") + last_part;
   return mnt_path;
 }
 
 bool USBDownload::ensureMounted(const WriteablePart& wp) {
   if(wp.devicePath.empty() || wp.mountPoint.empty()) return false;
 
-  std::string cmd = std::string("sudo /bin/mount ") + wp.devicePath + std::string(" ") + wp.mountPoint;
+  uid_t uid = geteuid();
+  gid_t gid = getegid();
+  std::string cmd = std::string("sudo /bin/mount -o ") + std::string("uid=") + std::to_string(uid) +
+    std::string(",gid=") + std::to_string(gid) +
+    std::string(",dmask=002,fmask=113 ") + wp.devicePath + std::string(" ") + wp.mountPoint;
   int ret_code = -1; 
   Util::getCmdOutput(cmd, true, &ret_code, CMD_TIMEOUT); 
   return ret_code == 0;
@@ -130,6 +141,12 @@ std::string USBDownload::generateOutputPath(const WriteablePart& wp, const QRDet
   // ensure dir exists
 
   std::string cmd = std::string("mkdir -p ") + out_path_dir;
-  Util::getCmdOutput(cmd, true, nullptr, CMD_TIMEOUT);
+  int ret = mkdir(out_path_dir.c_str(), 0775);
+  int ret2 = chmod(out_path_dir.c_str(), 0775);
+  int ret_total = ret + ret2;
+  if(ret_total != 0) {
+    LOG(WARNING) << "Could not create path: " << out_path_dir.c_str() << std::endl;
+    return "";
+  }
   return out_path_dir + std::string("/") + std::to_string(qr.identifier) + std::string("_") + std::to_string(qr.event_time) + std::string(".zip");
 }

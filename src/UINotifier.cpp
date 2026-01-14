@@ -14,6 +14,7 @@
 #include <unistd.h>
 #include <fcntl.h>
 #include <sstream>
+#include <sys/stat.h>
 
 #define MAX_MSG_LEN (2000000) // 2MB
 
@@ -178,6 +179,14 @@ void UINotifier::HandleUninitialized()
 	int ret = bind(sfd, (struct sockaddr*)&addr, sizeof(addr));
 	if(ret < 0) {
 		LOG(ERROR) << "bind() call failed." << std::endl;
+		close(sfd);
+		this->SocketStateTransitionTo(SocketStatus::SOCKET_CREATION_FAILURE);
+		return;
+	}
+	// Ensure correct permissions
+	int chmod_ret = chmod(this->socket_path.c_str(), 0775);
+	if(chmod_ret != 0) {
+		LOG(ERROR) << "chmod() call failed." << std::endl;
 		close(sfd);
 		this->SocketStateTransitionTo(SocketStatus::SOCKET_CREATION_FAILURE);
 		return;

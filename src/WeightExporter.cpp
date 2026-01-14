@@ -36,13 +36,13 @@ double WeightExporter::read_weight_grams() {
 }
 
 double WeightExporter::get_hx_val(int idx) {
-    HX711::SimpleHX711 hx(cells[idx].dt, cells[idx].sck);
-    hx.setUnit(HX711::Mass::Unit::G);
     HX711::Mass mass;
     try {
+        HX711::SimpleHX711 hx(cells[idx].dt, cells[idx].sck);
+        hx.setUnit(HX711::Mass::Unit::G);
         mass = hx.weight(std::chrono::nanoseconds(500000000)); // 500ms timeout
     } catch(std::exception& e) {
-        LOG(WARNING) << "Unable to obtain sample for load cell " << (idx + 1) << ", timeout reached." << std::endl;
+        LOG(WARNING) << "Unable to obtain sample for load cell " << (idx + 1) << ", due to error: " << e.what() << std::endl;
         return 0.0f;
     }
     return mass.getValue();

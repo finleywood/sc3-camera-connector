@@ -8,6 +8,14 @@ echo "Creating user and group"
 
 useradd -r -s /usr/sbin/nologin sc3
 
+echo "Adding to plugdev and gpio groups"
+usermod -aG gpio,plugdev sc3
+
+echo "Adding mounts path"
+mkdir -p /tmp/sc3_mounts
+chown sc3:sc3 /tmp/sc3_mounts
+chmod 775 /tmp/sc3_mounts
+
 echo "Reloading udev rules"
 udevadm control --reload
 
