@@ -29,35 +29,17 @@ cv::Mat BufToCvCpy(const EncodedImage& img)
     return bgr_mat;
 }
 
-EncodedImage K4AToJpeg(k4a_image_t* image, int quality)
+EncodedImage RawToJpg(EncodedImage& image, int quality)
 {
     EncodedImage result;
 
-    if (!image)
+    if (!image.valid())
         return result;
-
-    uint8_t* img_buf = k4a_image_get_buffer(*image);
-    int width  = k4a_image_get_width_pixels(*image);
-    int height = k4a_image_get_height_pixels(*image);
-    k4a_image_format_t format = k4a_image_get_format(*image);
 
     cv::Mat mat;
 
-    if (format == K4A_IMAGE_FORMAT_COLOR_BGRA32) {
-        cv::Mat bgra(height, width, CV_8UC4, img_buf);
-        cv::cvtColor(bgra, mat, cv::COLOR_BGRA2BGR);
-    } 
-    else if (format == K4A_IMAGE_FORMAT_COLOR_MJPG) {
-        // Already JPEG-encoded, just copy
-        result.size = k4a_image_get_size(*image);
-        result.data.reset(new uint8_t[result.size]);
-        memcpy(result.data.get(), img_buf, result.size);
-        return result;
-    } 
-    else {
-        LOG(ERROR) << "Unsupported image format for JPEG encoding" << std::endl;
-        return result;
-    }
+    cv::Mat bgra(image.height, image.width, CV_8UC4, image.data.get());
+    cv::cvtColor(bgra, mat, cv::COLOR_BGRA2BGR);
 
     std::vector<uint8_t> jpeg_buf;
     std::vector<int> params = { cv::IMWRITE_JPEG_QUALITY, quality };
@@ -70,55 +52,42 @@ EncodedImage K4AToJpeg(k4a_image_t* image, int quality)
     result.size = jpeg_buf.size();
     result.data.reset(new uint8_t[result.size]);
     std::copy(jpeg_buf.begin(), jpeg_buf.end(), result.data.get());
-    result.width = width;
-    result.height = height;
+    result.width = image.width;
+    result.height = image.height;
 
     return result;
 }
 
-EncodedImage K4AToPng(k4a_image_t* image) {
+EncodedImage k4a_to_enc_img(k4a_image_t* image) {
     EncodedImage result;
-    
-    if (image == nullptr) {
+
+    if (!image)
         return result;
-    }
+
+    uint8_t* img_buf = k4a_image_get_buffer(*image);
+    result.width  = k4a_image_get_width_pixels(*image);
+    result.height = k4a_image_get_height_pixels(*image);
+
+    size_t sz = result.width * result.height * 4;
+    result.size = sz;
     
-    int width = k4a_image_get_width_pixels(*image);
-    int height = k4a_image_get_height_pixels(*image);
-    k4a_image_format_t format = k4a_image_get_format(*image);
-    uint8_t* buffer = k4a_image_get_buffer(*image);
+    // Use shared_ptr so the data stays alive when cv::Mat wraps it
+    result.data = std::shared_ptr<uint8_t[]>(new uint8_t[result.size]);
+    std::memcpy(result.data.get(), img_buf, result.size);
     
-    if (buffer == nullptr || width == 0 || height == 0) {
+    return result;
+}
+
+EncodedImage RawToPng(EncodedImage& image) {
+    EncodedImage result;
+
+    if (!image.valid())
         return result;
-    }
-    
+
     cv::Mat mat;
-    
-    // Convert k4a format to OpenCV Mat
-    switch (format) {
-        case K4A_IMAGE_FORMAT_COLOR_BGRA32:
-            mat = cv::Mat(height, width, CV_8UC4, buffer);
-            break;
-        case K4A_IMAGE_FORMAT_COLOR_MJPG:
-            // MJPG needs decoding first
-            {
-                std::vector<uint8_t> jpgData(buffer, buffer + k4a_image_get_size(*image));
-                mat = cv::imdecode(jpgData, cv::IMREAD_COLOR);
-            }
-            break;
-        case K4A_IMAGE_FORMAT_DEPTH16:
-        case K4A_IMAGE_FORMAT_IR16:
-            mat = cv::Mat(height, width, CV_16UC1, buffer);
-            break;
-        case K4A_IMAGE_FORMAT_CUSTOM8:
-            mat = cv::Mat(height, width, CV_8UC1, buffer);
-            break;
-        case K4A_IMAGE_FORMAT_CUSTOM16:
-            mat = cv::Mat(height, width, CV_16UC1, buffer);
-            break;
-        default:
-            return result;
-    }
+
+    cv::Mat bgra(image.height, image.width, CV_8UC4, image.data.get());
+    cv::cvtColor(bgra, mat, cv::COLOR_BGRA2BGR);
     
     if (mat.empty()) {
         return result;
@@ -136,8 +105,8 @@ EncodedImage K4AToPng(k4a_image_t* image) {
     result.size = encodedBuffer.size();
     result.data.reset(new uint8_t[result.size]);
     std::copy(encodedBuffer.begin(), encodedBuffer.end(), result.data.get());
-    result.width = width;
-    result.height = height;
+    result.width = image.width;
+    result.height = image.height;
     
     return result;
 }

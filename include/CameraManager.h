@@ -121,7 +121,7 @@ private:
 	// Limits
 	static constexpr int MAX_RECONNECT_ATTEMPTS = 10;
 	static constexpr int RECONNECT_COOLDOWN_SEC = 5;
-	static constexpr int MAX_FRAMES_FOR_COLLECTION = 15;
+	static constexpr int MAX_FRAMES_FOR_COLLECTION = 5;
     
 	// callbacks
 	state_callback_t state_callback;

@@ -68,8 +68,8 @@ std::pair<EncodedImage, EncodedImage> KinectCamera::GetFrame() {
         return std::make_pair(EncodedImage{}, EncodedImage{});
     }
 
-    EncodedImage rgb_jpg = ImageUtils::K4AToJpeg(&color_img);
-    EncodedImage depth_png = ImageUtils::K4AToPng(&depth_img);
+    EncodedImage rgb_jpg = ImageUtils::k4a_to_enc_img(&color_img);
+    EncodedImage depth_png = ImageUtils::k4a_to_enc_img(&depth_img);
 
     k4a_image_release(color_img);
     k4a_image_release(depth_img);

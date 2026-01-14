@@ -9,8 +9,9 @@
 namespace ImageUtils {
 
 cv::Mat BufToCvCpy(const EncodedImage& img);
-EncodedImage K4AToJpeg(k4a_image_t* image, int quality = 90);
-EncodedImage K4AToPng(k4a_image_t* image);
+EncodedImage RawToJpg(EncodedImage& image, int quality = 90);
+EncodedImage RawToPng(EncodedImage& image);
 EncodedImage JpegToThumbnail(const EncodedImage& orig_img, int target_width = 640, int out_quality = 90);
+EncodedImage k4a_to_enc_img(k4a_image_t*);
 
 }

@@ -414,30 +414,44 @@ void CameraManager::ResetEventState()
 }
 
 QRDetection CameraManager::LookForQR(const EncodedImage& img) {
-	cv::Mat cv_mat_img = ImageUtils::BufToCvCpy(img);
+    if (!img.valid()) {
+        return {};
+    }
     
-	cv::QRCodeDetector cv_qr;
-	std::vector<cv::Point> qr_detections;
-	try {
-		std::string found_data = cv_qr.detectAndDecode(cv_mat_img, qr_detections);
-		int id_as_int = -1;
-		try {
-			id_as_int = std::stoi(found_data);
-		} catch(std::exception& e) {
-			LOG(WARNING) << "Found identifier was not a valid int." << std::endl;
-		}
+    // Wrap the buffer - data stays alive because EncodedImage uses shared_ptr
+    cv::Mat mat(img.height, img.width, CV_8UC4, img.data.get());
+    
+    // QR detector works with BGRA, no need to convert!
+    cv::QRCodeDetector cv_qr;
+    std::vector<cv::Point> qr_detections;
+    
+    try {
+        std::string found_data = cv_qr.detectAndDecode(mat, qr_detections);
+        
+        if (found_data.empty()) {
+            return {};
+        }
+        
+        int id_as_int = -1;
+        try {
+            id_as_int = std::stoi(found_data);
+        } catch(const std::exception& e) {
+            LOG(WARNING) << "Found identifier was not a valid int: " << found_data << std::endl;
+            return {};
+        }
 
-		if (id_as_int >= 0) {
-			LOG(DEBUG) << "Detector detected and decoded a QR." << std::endl;
-			QRDetection found_qr;
-			found_qr.identifier = id_as_int;
-			return found_qr;
-		}
-		return {};
-	} catch(std::exception& e) {
-		LOG(WARNING) << "QR Code detection failed. Due to " << e.what() << std::endl;
-		return {};
-	}
+        if (id_as_int >= 0) {
+            LOG(DEBUG) << "Detector detected and decoded QR with ID: " << id_as_int << std::endl;
+            QRDetection found_qr;
+            found_qr.identifier = id_as_int;
+            return found_qr;
+        }
+        
+        return {};
+    } catch(const std::exception& e) {
+        LOG(WARNING) << "QR Code detection failed: " << e.what() << std::endl;
+        return {};
+    }
 }
 
 void CameraManager::SendThumnail(const EncodedImage& orig_img)
@@ -478,8 +492,8 @@ void CameraManager::HandleCapture(std::pair<EncodedImage, EncodedImage> cap) {
 	auto now = std::chrono::system_clock::now();
 	found_qr.event_time = std::chrono::duration_cast<std::chrono::seconds>(now.time_since_epoch()).count();
 
-	found_qr.rgb_img = std::move(cap.first);
-	found_qr.depth_image = std::move(cap.second);
+	found_qr.rgb_img = ImageUtils::RawToJpg(cap.first);
+	found_qr.depth_image = ImageUtils::RawToPng(cap.second);
 
 	if(found_qr.identifier >= 0) {         
 		// Get weight
