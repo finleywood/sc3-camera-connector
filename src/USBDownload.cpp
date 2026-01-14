@@ -74,7 +74,7 @@ std::string USBDownload::generateMountPoint(const WriteablePart& wp) {
 
   auto pos = wp.devicePath.find_last_of('/');
   std::string last_part = (pos == std::string::npos) ? wp.devicePath : wp.devicePath.substr(pos + 1);
-  std::string mnt_path = std::string("/tmp/sc3_mounts/export_") + last_part;
+  std::string mnt_path = std::string("/mnt/sc3_mounts/export_") + last_part;
   return mnt_path;
 }
 

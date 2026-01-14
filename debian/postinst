@@ -12,9 +12,9 @@ echo "Adding to plugdev and gpio groups"
 usermod -aG gpio,plugdev sc3
 
 echo "Adding mounts path"
-mkdir -p /tmp/sc3_mounts
-chown sc3:sc3 /tmp/sc3_mounts
-chmod 775 /tmp/sc3_mounts
+mkdir -p /mnt/sc3_mounts
+chown sc3:sc3 /mnt/sc3_mounts
+chmod 775 /mnt/sc3_mounts
 
 echo "Reloading udev rules"
 udevadm control --reload
