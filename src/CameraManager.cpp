@@ -444,7 +444,7 @@ QRDetection CameraManager::LookForQR(const EncodedImage& img) {
         }
 
         if (id_as_int >= 0) {
-            LOG(DEBUG) << "Detector detected and decoded QR with ID: " << id_as_int << std::endl;
+            LOG(INFO) << "Detector detected and decoded QR with ID: " << id_as_int << std::endl;
             QRDetection found_qr;
             found_qr.identifier = id_as_int;
             return found_qr;
@@ -503,6 +503,7 @@ void CameraManager::HandleCapture(std::pair<EncodedImage, EncodedImage> cap) {
 		this->event_state.detection_event.weight = WeightExporter::read_weight_grams();   
 		CommandManager& cm = CommandManager::GetCM();
 
+		this->event_state.detection_event = found_qr;
 		// Then let the ui know
 		StringMessage notify_msg;
 		notify_msg.MsgType = MessageType::COLLECTION_SUCCESS;
@@ -512,12 +513,12 @@ void CameraManager::HandleCapture(std::pair<EncodedImage, EncodedImage> cap) {
 		notify_msg.content = content_obj.dump();
 		cm.SubmitMessage(notify_msg);
 
-		this->event_state.detection_event = found_qr;
-
 		this->TransitionTo(CameraState::WAITING_FOR_DECISION);
 
 	} else {
 		if(this->frames_since_event_started >= (MAX_FRAMES_FOR_COLLECTION - 1)) {
+			// Store last image as capture
+			this->event_state.detection_event = found_qr;
 			// Get weight
 			this->event_state.detection_event.weight = WeightExporter::read_weight_grams();
 			StringMessage msg;
@@ -526,9 +527,6 @@ void CameraManager::HandleCapture(std::pair<EncodedImage, EncodedImage> cap) {
 			msg.content = content_obj.dump();
 			msg.MsgType = MessageType::DETECTION_FAILURE;
 			CommandManager::GetCM().SubmitMessage(msg);
-
-			// Store last image as capture
-			this->event_state.detection_event = found_qr;
 
 			this->TransitionTo(CameraState::WAITING_FOR_DECISION);
 		} else {
