@@ -3,6 +3,7 @@
 #include <ctime>
 #include <cstdio>
 #include <sys/stat.h>
+#include <errno.h>
 
 extern "C" {
 
@@ -46,8 +47,12 @@ WriteablePart& USBDownload::getMountPoint(WriteablePart& wp) {
     // Doesn't exist, need to make one
     std::string proposed_mnt = generateMountPoint(wp);
     // Ensure folder exists
-    cmd = std::string("mkdir -p ") + proposed_mnt;
     int ret1 = mkdir(proposed_mnt.c_str(), 0775);
+    if(ret1 == -1) {
+      if(errno == EEXIST) {
+        ret1 = 0;
+      }
+    }
     // Double Ensure permissions are correct
     int ret2 = chmod(proposed_mnt.c_str(), 0775);
     int ret_total = ret1 + ret2;
@@ -142,6 +147,12 @@ std::string USBDownload::generateOutputPath(const WriteablePart& wp, const QRDet
 
   std::string cmd = std::string("mkdir -p ") + out_path_dir;
   int ret = mkdir(out_path_dir.c_str(), 0775);
+  if(ret == -1) {
+    if(errno == EEXIST) {
+      // Already exists, doesn't matter
+      ret = 0;
+    }
+  }
   int ret2 = chmod(out_path_dir.c_str(), 0775);
   int ret_total = ret + ret2;
   if(ret_total != 0) {
