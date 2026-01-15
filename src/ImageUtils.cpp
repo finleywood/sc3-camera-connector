@@ -60,19 +60,17 @@ EncodedImage RawToJpg(EncodedImage& image, int quality)
 
 EncodedImage k4a_to_enc_img(k4a_image_t* image) {
     EncodedImage result;
+    if (!image) return result;
 
-    if (!image)
-        return result;
-
-    uint8_t* img_buf = k4a_image_get_buffer(*image);
-    result.width  = k4a_image_get_width_pixels(*image);
+    result.width = k4a_image_get_width_pixels(*image);
     result.height = k4a_image_get_height_pixels(*image);
-
-    size_t sz = result.width * result.height * 4;
-    result.size = sz;
     
-    // Use shared_ptr so the data stays alive when cv::Mat wraps it
-    result.data = std::shared_ptr<uint8_t[]>(new uint8_t[result.size]);
+    // Get the ACTUAL buffer size from k4a
+    size_t buffer_size = k4a_image_get_size(*image);
+    result.size = buffer_size;
+    
+    uint8_t* img_buf = k4a_image_get_buffer(*image);
+    result.data.reset(new uint8_t[result.size]);
     std::memcpy(result.data.get(), img_buf, result.size);
     
     return result;
@@ -80,25 +78,37 @@ EncodedImage k4a_to_enc_img(k4a_image_t* image) {
 
 EncodedImage RawToPng(EncodedImage& image) {
     EncodedImage result;
-
-    if (!image.valid())
-        return result;
+    if (!image.valid()) return result;
 
     cv::Mat mat;
-
-    cv::Mat bgra(image.height, image.width, CV_8UC4, image.data.get());
-    cv::cvtColor(bgra, mat, cv::COLOR_BGRA2BGR);
     
-    if (mat.empty()) {
+    // Determine if this is depth or color based on size
+    size_t expected_depth_size = image.height * image.width * 2;  // 16-bit
+    size_t expected_color_size = image.height * image.width * 4;  // BGRA
+    
+    if (image.size == expected_depth_size) {
+        // DEPTH IMAGE - Keep as 16-bit!
+        mat = cv::Mat(image.height, image.width, CV_16UC1, image.data.get()).clone();
+        LOG(INFO) << "Encoding 16-bit depth image" << std::endl;
+    } else if (image.size == expected_color_size) {
+        // COLOR IMAGE - Convert BGRA to BGR
+        cv::Mat bgra(image.height, image.width, CV_8UC4, image.data.get());
+        cv::cvtColor(bgra, mat, cv::COLOR_BGRA2BGR);
+        LOG(INFO) << "Encoding 8-bit color image" << std::endl;
+    } else {
+        LOG(ERROR) << "Unexpected image size: " << image.size 
+                   << " (expected " << expected_depth_size 
+                   << " for depth or " << expected_color_size << " for color)" << std::endl;
         return result;
     }
     
+    if (mat.empty()) return result;
+    
     std::vector<uint8_t> encodedBuffer;
-    std::vector<int> params;
-    params.push_back(cv::IMWRITE_PNG_COMPRESSION);
-    params.push_back(3);
+    std::vector<int> params = {cv::IMWRITE_PNG_COMPRESSION, 3};
     
     if (!cv::imencode(".png", mat, encodedBuffer, params)) {
+        LOG(ERROR) << "Failed to encode PNG" << std::endl;
         return result;
     }
     
