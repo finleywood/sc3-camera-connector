@@ -35,7 +35,33 @@ std::string unixTimestampToDateString(uint64_t timestamp)
 
 WriteablePart USBDownload::getUSBDevice() {
  WriteablePart wp_res;
- wp_res.devicePath = Util::getCmdOutput("/sbin/blkid -o device -t TYPE=vfat /dev/sd*", true, nullptr, CMD_TIMEOUT);
+ std::string out = Util::getCmdOutput("/bin/lsblk -pnr -o NAME,FSTYPE /dev/sd*", true, nullptr, CMD_TIMEOUT);
+ std::vector<std::string> lines;
+ std::istringstream stream(out);
+ std::string line;
+ while(std::getline(stream, line)) {
+  lines.push_back(line);
+ }
+
+ if(lines.size() == 0)
+  return wp_res;
+
+  for(std::string l : lines) {
+    std::vector<std::string> words;
+    std::istringstream iss(l);
+    std::string word;
+    while(iss >> word) {
+      words.push_back(word);
+    }
+
+    if(words.size() != 2) continue;
+
+    if(words.at(1) == "vfat") {
+      wp_res.devicePath = words.at(0);
+      break;
+    }
+  }
+
  return wp_res;
 }
 
