@@ -498,12 +498,13 @@ void CameraManager::HandleCapture(std::pair<EncodedImage, EncodedImage> cap) {
 	found_qr.rgb_img = ImageUtils::RawToJpg(cap.first);
 	found_qr.depth_image = ImageUtils::RawToPng(cap.second);
 
-	if(found_qr.identifier >= 0) {         
+	if(found_qr.identifier >= 0) { 
+		// Store last image as capture
+		this->event_state.detection_event = found_qr;       
 		// Get weight
 		this->event_state.detection_event.weight = WeightExporter::read_weight_grams();   
 		CommandManager& cm = CommandManager::GetCM();
 
-		this->event_state.detection_event = found_qr;
 		// Then let the ui know
 		StringMessage notify_msg;
 		notify_msg.MsgType = MessageType::COLLECTION_SUCCESS;
